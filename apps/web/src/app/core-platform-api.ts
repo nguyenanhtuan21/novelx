@@ -3,6 +3,16 @@ import { notFound } from "next/navigation";
 const corePlatformApiUrl =
   process.env.CORE_PLATFORM_API_URL ?? "http://localhost:3001";
 
+export class CorePlatformRequestError extends Error {
+  constructor(
+    readonly status: number,
+    resourceName: string,
+  ) {
+    super(`Core Platform ${resourceName} request failed: ${status}`);
+    this.name = "CorePlatformRequestError";
+  }
+}
+
 /** Public catalog reads need no reader session; `fetchCorePlatformJson` carries one. */
 export async function fetchPublicCorePlatformJson<T>(
   path: string,
@@ -26,9 +36,7 @@ export async function fetchCorePlatformJson<T>(
   }
 
   if (!response.ok) {
-    throw new Error(
-      `Core Platform ${resourceName} request failed: ${response.status}`,
-    );
+    throw new CorePlatformRequestError(response.status, resourceName);
   }
 
   return (await response.json()) as T;

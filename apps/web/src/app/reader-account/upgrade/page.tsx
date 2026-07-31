@@ -4,13 +4,7 @@ import { useRouter } from "next/navigation";
 import React from "react";
 import { useState } from "react";
 
-import {
-  anonymousSessionCookieValue,
-  ensureAnonymousSessionId,
-  readerAccountCookieValue,
-  readerSessionFromCookie,
-  upgradeToReaderAccountRequest,
-} from "../../reader-library-client";
+import { upgradeToReaderAccountRequest } from "../../reader-library-client";
 
 export default function UpgradeReaderAccountPage() {
   const router = useRouter();
@@ -34,18 +28,9 @@ export default function UpgradeReaderAccountPage() {
             setFailed(false);
 
             try {
-              const anonymousSessionId = ensureAnonymousSessionId(
-                document.cookie,
-                () => crypto.randomUUID(),
-              );
-              document.cookie = anonymousSessionCookieValue(anonymousSessionId);
-
-              const readerAccountId =
-                readerSessionFromCookie(document.cookie).readerAccountId ??
-                (await upgradeToReaderAccountRequest({ anonymousSessionId }));
-              document.cookie = readerAccountCookieValue(readerAccountId);
-
+              await upgradeToReaderAccountRequest();
               router.push("/library");
+              router.refresh();
             } catch {
               setFailed(true);
             } finally {

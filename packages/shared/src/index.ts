@@ -56,10 +56,6 @@ export type Principal = StaffPrincipal | ReaderPrincipal;
 
 export type ReaderRequestPrincipal = ReaderPrincipal | AnonymousReaderPrincipal;
 
-/** Request headers that name the reader session on the Core Platform reader boundary. */
-export const READER_ACCOUNT_HEADER = "x-novelx-reader-account-id";
-export const ANONYMOUS_SESSION_HEADER = "x-novelx-anonymous-session-id";
-
 export type AiPersona = {
   id: string;
   displayName: string;

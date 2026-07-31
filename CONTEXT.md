@@ -64,6 +64,10 @@ _Avoid_: AI-generated, machine-written, fake author disclosure
 An account used by a reader to read, follow series, store progress, participate in community features, and manage reader-facing purchases or preferences.
 _Avoid_: user account, customer account
 
+**Reader Session Token**:
+The signed proof of which reader session a reader-facing request belongs to: a reader account or an anonymous reader session. Core Platform issues and verifies it; clients treat it as opaque and never construct one. A request without a valid token names no reader account.
+_Avoid_: API key, reader id header, JWT
+
 **Series Follow**:
 A reader account's standing interest in a series, used to build that reader's library and, later, release notifications. A series follow is reader-owned state and says nothing about entitlement to paid or early-access content.
 _Avoid_: subscription, bookmark, favourite

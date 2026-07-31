@@ -8,7 +8,9 @@ import {
 import {
   assertReaderAccountPrincipal,
   buildReaderLibrary,
+  createAnonymousReaderPrincipal,
   createReaderAccount,
+  createReaderPrincipal,
   READER_ACCOUNT_UPGRADE_REQUIRED,
   ReaderAccountUpgradeRequiredError,
   upgradeAnonymousProgress,
@@ -21,6 +23,8 @@ import {
 
 import type { CatalogService } from "./catalog.service.js";
 import type { ReaderLibraryRepository } from "./reader-library.repository.js";
+import { readerSessionSecret } from "./reader-principal.js";
+import { signReaderSessionToken } from "./reader-session-token.js";
 
 /** Where a reader-facing client should send an Anonymous Reader Session to upgrade. */
 export const READER_ACCOUNT_UPGRADE_PATH = "/reader/accounts";
@@ -28,12 +32,19 @@ export const READER_ACCOUNT_UPGRADE_PATH = "/reader/accounts";
 export type ReaderLibraryServiceOptions = {
   now?: () => string;
   newReaderAccountId?: () => string;
+  newAnonymousSessionId?: () => string;
+  issueToken?: (principal: ReaderRequestPrincipal, issuedAt: string) => string;
 };
 
 @Injectable()
 export class ReaderLibraryService {
   private readonly now: () => string;
   private readonly newReaderAccountId: () => string;
+  private readonly newAnonymousSessionId: () => string;
+  private readonly issueToken: (
+    principal: ReaderRequestPrincipal,
+    issuedAt: string,
+  ) => string;
 
   constructor(
     private readonly readerLibraryRepository: ReaderLibraryRepository,
@@ -43,6 +54,16 @@ export class ReaderLibraryService {
     this.now = options.now ?? (() => new Date().toISOString());
     this.newReaderAccountId =
       options.newReaderAccountId ?? (() => randomUUID());
+    this.newAnonymousSessionId =
+      options.newAnonymousSessionId ?? (() => randomUUID());
+    this.issueToken =
+      options.issueToken ??
+      ((principal, issuedAt) =>
+        signReaderSessionToken({
+          principal,
+          secret: readerSessionSecret(),
+          issuedAt,
+        }));
   }
 
   async followSeries(input: {
@@ -106,15 +127,31 @@ export class ReaderLibraryService {
     return progress;
   }
 
+  /** Starts an Anonymous Reader Session for a reader who holds no token yet. */
+  async startAnonymousSession(): Promise<{
+    anonymousSessionId: string;
+    token: string;
+  }> {
+    const principal = createAnonymousReaderPrincipal({
+      anonymousSessionId: this.newAnonymousSessionId(),
+    });
+
+    return {
+      anonymousSessionId: principal.anonymousSessionId,
+      token: this.issueToken(principal, this.now()),
+    };
+  }
+
   /**
    * Upgrades an Anonymous Reader Session into a Reader Account, carrying the
-   * session's lightweight progress across so the reader keeps their place.
+   * session's lightweight progress across so the reader keeps their place, and
+   * issues the token that names the Reader Account from now on.
    */
   async upgradeAnonymousSession(input: {
     principal: ReaderRequestPrincipal;
-  }): Promise<{ readerAccountId: string }> {
+  }): Promise<{ readerAccountId: string; token: string }> {
     if (input.principal.kind === "reader") {
-      return { readerAccountId: input.principal.readerAccountId };
+      return this.readerSession(input.principal.readerAccountId);
     }
 
     const anonymousSessionId = this.requireAnonymousSessionId(input.principal);
@@ -122,14 +159,30 @@ export class ReaderLibraryService {
       await this.readerLibraryRepository.loadAnonymousSession(
         anonymousSessionId,
       );
+    const upgraded = await this.readerLibraryRepository.upgradeAnonymousSession(
+      {
+        anonymousSessionId,
+        reader: upgradeAnonymousProgress({
+          session,
+          reader: createReaderAccount({ id: this.newReaderAccountId() }),
+        }),
+      },
+    );
 
-    return this.readerLibraryRepository.upgradeAnonymousSession({
-      anonymousSessionId,
-      reader: upgradeAnonymousProgress({
-        session,
-        reader: createReaderAccount({ id: this.newReaderAccountId() }),
-      }),
-    });
+    return this.readerSession(upgraded.readerAccountId);
+  }
+
+  private readerSession(readerAccountId: string): {
+    readerAccountId: string;
+    token: string;
+  } {
+    return {
+      readerAccountId,
+      token: this.issueToken(
+        createReaderPrincipal({ readerAccountId }),
+        this.now(),
+      ),
+    };
   }
 
   async getLibrary(input: {

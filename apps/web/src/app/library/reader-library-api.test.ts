@@ -10,7 +10,7 @@ describe("Reader Account library web/API seam", () => {
     globalThis.fetch = originalFetch;
   });
 
-  it("asks Core Platform for the library as the signed-in Reader Account", async () => {
+  it("asks Core Platform for the library with the reader session token", async () => {
     const calls: { url: string; headers: Headers }[] = [];
 
     globalThis.fetch = async (input, init) => {
@@ -22,16 +22,32 @@ describe("Reader Account library web/API seam", () => {
       });
     };
 
-    const library = await fetchReaderLibrary("reader-1");
+    const library = await fetchReaderLibrary("session-token-1");
 
     assert.deepEqual(
       calls.map((call) => call.url),
       ["http://localhost:3001/reader/library"],
     );
     assert.equal(
-      calls[0]?.headers.get("x-novelx-reader-account-id"),
-      "reader-1",
+      calls[0]?.headers.get("authorization"),
+      "Bearer session-token-1",
     );
-    assert.deepEqual(library.entries, []);
+    assert.deepEqual(library, { entries: [] });
+  });
+
+  it("reports an upgrade prompt rather than failing the page", async () => {
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({ error: "reader-account-upgrade-required" }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 401,
+        },
+      );
+
+    assert.equal(
+      await fetchReaderLibrary("session-token-anon"),
+      "upgrade-required",
+    );
   });
 });

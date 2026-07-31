@@ -11,9 +11,10 @@ import {
 } from "@nestjs/common";
 
 import { ReaderLibraryService } from "./reader-library.service.js";
-import { readerRequestPrincipal } from "./reader-principal.js";
-
-type RequestHeaders = Record<string, string | string[] | undefined>;
+import {
+  readerRequestPrincipal,
+  readerSessionSecret,
+} from "./reader-principal.js";
 
 type RecordProgressBody = {
   seriesId: string;
@@ -29,51 +30,64 @@ export class ReaderLibraryController {
   ) {}
 
   @Get("library")
-  getLibrary(@Headers() headers: RequestHeaders) {
+  getLibrary(@Headers("authorization") authorization?: string) {
     return this.readerLibraryService.getLibrary({
-      principal: readerRequestPrincipal(headers),
+      principal: this.principal(authorization),
     });
   }
 
   @Put("library/follows/:seriesId")
   followSeries(
-    @Headers() headers: RequestHeaders,
     @Param("seriesId") seriesId: string,
+    @Headers("authorization") authorization?: string,
   ) {
     return this.readerLibraryService.followSeries({
-      principal: readerRequestPrincipal(headers),
+      principal: this.principal(authorization),
       seriesId,
     });
   }
 
   @Delete("library/follows/:seriesId")
   unfollowSeries(
-    @Headers() headers: RequestHeaders,
     @Param("seriesId") seriesId: string,
+    @Headers("authorization") authorization?: string,
   ) {
     return this.readerLibraryService.unfollowSeries({
-      principal: readerRequestPrincipal(headers),
+      principal: this.principal(authorization),
       seriesId,
     });
   }
 
   @Put("progress")
   recordProgress(
-    @Headers() headers: RequestHeaders,
     @Body() body: RecordProgressBody,
+    @Headers("authorization") authorization?: string,
   ) {
     return this.readerLibraryService.recordProgress({
-      principal: readerRequestPrincipal(headers),
+      principal: this.principal(authorization),
       seriesId: body?.seriesId,
       chapterId: body?.chapterId,
       position: body?.position,
     });
   }
 
+  /** Starts an Anonymous Reader Session for a reader who has no token yet. */
+  @Post("sessions")
+  startAnonymousSession() {
+    return this.readerLibraryService.startAnonymousSession();
+  }
+
   @Post("accounts")
-  upgradeAnonymousSession(@Headers() headers: RequestHeaders) {
+  upgradeAnonymousSession(@Headers("authorization") authorization?: string) {
     return this.readerLibraryService.upgradeAnonymousSession({
-      principal: readerRequestPrincipal(headers),
+      principal: this.principal(authorization),
+    });
+  }
+
+  private principal(authorization: string | undefined) {
+    return readerRequestPrincipal({
+      authorization,
+      secret: readerSessionSecret(),
     });
   }
 }

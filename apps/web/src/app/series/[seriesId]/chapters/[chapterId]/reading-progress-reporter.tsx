@@ -2,19 +2,15 @@
 
 import { useEffect } from "react";
 
-import {
-  anonymousSessionCookieValue,
-  ensureAnonymousSessionId,
-  readerSessionFromCookie,
-  recordProgressRequest,
-} from "../../../../reader-library-client";
+import { recordProgressRequest } from "../../../../reader-library-client";
 
 const PROGRESS_REPORT_INTERVAL_MS = 5000;
 
 /**
  * Reports lightweight Chapter progress for the current reader session so the
  * Reader Account library can offer continue-reading. Anonymous Reader Sessions
- * keep reporting too; the upgrade flow carries that progress across.
+ * keep reporting too — the reader route starts one when needed, and the
+ * upgrade flow carries that progress across.
  */
 export function ReadingProgressReporter({
   seriesId,
@@ -24,11 +20,6 @@ export function ReadingProgressReporter({
   chapterId: string;
 }) {
   useEffect(() => {
-    const anonymousSessionId = ensureAnonymousSessionId(document.cookie, () =>
-      crypto.randomUUID(),
-    );
-    document.cookie = anonymousSessionCookieValue(anonymousSessionId);
-
     let lastReported = -1;
 
     const report = () => {
@@ -39,14 +30,11 @@ export function ReadingProgressReporter({
       }
 
       lastReported = position;
-      void recordProgressRequest({
-        session: readerSessionFromCookie(document.cookie),
-        seriesId,
-        chapterId,
-        position,
-      }).catch(() => {
-        lastReported = -1;
-      });
+      void recordProgressRequest({ seriesId, chapterId, position }).catch(
+        () => {
+          lastReported = -1;
+        },
+      );
     };
 
     report();

@@ -7,40 +7,26 @@ import { useEffect, useState } from "react";
 import {
   fetchReaderLibraryRequest,
   followSeriesRequest,
-  readerSessionFromCookie,
   unfollowSeriesRequest,
+  type ReaderLibraryResult,
 } from "../../reader-library-client";
 
 type FollowState =
   | { kind: "unknown" }
-  | { kind: "anonymous" }
-  | { kind: "reader"; readerAccountId: string; following: boolean };
+  | { kind: "upgrade-required" }
+  | { kind: "reader"; following: boolean };
 
 export function FollowSeriesButton({ seriesId }: { seriesId: string }) {
   const [state, setState] = useState<FollowState>({ kind: "unknown" });
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
-    const { readerAccountId } = readerSessionFromCookie(document.cookie);
-
-    if (!readerAccountId) {
-      setState({ kind: "anonymous" });
-      return;
-    }
-
     let active = true;
-    fetchReaderLibraryRequest({ readerAccountId }).then((library) => {
-      if (!active) {
-        return;
-      }
 
-      setState({
-        kind: "reader",
-        readerAccountId,
-        following: library.entries.some(
-          (entry) => entry.series.id === seriesId,
-        ),
-      });
+    fetchReaderLibraryRequest().then((result) => {
+      if (active) {
+        setState(followState(result, seriesId));
+      }
     });
 
     return () => {
@@ -48,7 +34,7 @@ export function FollowSeriesButton({ seriesId }: { seriesId: string }) {
     };
   }, [seriesId]);
 
-  if (state.kind === "anonymous") {
+  if (state.kind === "upgrade-required") {
     return (
       <p className="follow-control" data-series-id={seriesId}>
         <Link className="read-link" href="/reader-account/upgrade">
@@ -67,17 +53,13 @@ export function FollowSeriesButton({ seriesId }: { seriesId: string }) {
         aria-pressed={following}
         disabled={state.kind === "unknown" || pending}
         onClick={async () => {
-          if (state.kind !== "reader") {
-            return;
-          }
-
           setPending(true);
           try {
             const request = following
               ? unfollowSeriesRequest
               : followSeriesRequest;
-            await request({ seriesId, readerAccountId: state.readerAccountId });
-            setState({ ...state, following: !following });
+
+            setState(followState(await request({ seriesId }), seriesId));
           } finally {
             setPending(false);
           }
@@ -87,4 +69,20 @@ export function FollowSeriesButton({ seriesId }: { seriesId: string }) {
       </button>
     </p>
   );
+}
+
+function followState(
+  result: ReaderLibraryResult,
+  seriesId: string,
+): FollowState {
+  if (result.kind === "upgrade-required") {
+    return { kind: "upgrade-required" };
+  }
+
+  return {
+    kind: "reader",
+    following: result.library.entries.some(
+      (entry) => entry.series.id === seriesId,
+    ),
+  };
 }
