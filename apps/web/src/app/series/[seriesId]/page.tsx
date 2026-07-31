@@ -3,6 +3,7 @@ import Link from "next/link";
 import React from "react";
 
 import { fetchPublicCorePlatformJson } from "../../core-platform-api";
+import { FollowSeriesButton } from "./follow-series-button";
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +56,8 @@ export default async function SeriesPage({ params }: SeriesPageProps) {
             <dd>{contentWarnings}</dd>
           </div>
         </dl>
+
+        <FollowSeriesButton seriesId={series.id} />
 
         {series.firstPublicChapterId ? (
           <Link

@@ -3,6 +3,7 @@ import React from "react";
 
 import { fetchPublicCorePlatformJson } from "../../../../core-platform-api";
 import { ReaderControls } from "./reader-controls";
+import { ReadingProgressReporter } from "./reading-progress-reporter";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,10 @@ export default async function ChapterPage({ params }: ChapterPageProps) {
         </p>
       </header>
       <ReaderControls />
+      <ReadingProgressReporter
+        seriesId={chapter.seriesId}
+        chapterId={chapter.chapterId}
+      />
       <article className="prose" data-chapter-id={chapter.chapterId}>
         {paragraphs.map((paragraph) => (
           <p key={paragraph}>{paragraph}</p>

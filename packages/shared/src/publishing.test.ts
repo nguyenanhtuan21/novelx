@@ -284,6 +284,7 @@ describe("anonymous reader progress", () => {
     const session = recordAnonymousProgress(
       createAnonymousReaderSession({ id: "anon-1" }),
       {
+        seriesId: "series-1",
         chapterId: "chapter-1",
         position: 1842,
         updatedAt: "2026-07-31T00:00:00.000Z",

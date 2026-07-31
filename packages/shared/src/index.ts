@@ -47,7 +47,14 @@ export type ReaderPrincipal = {
   readerAccountId: string;
 };
 
+export type AnonymousReaderPrincipal = {
+  kind: "anonymous-reader";
+  anonymousSessionId: string;
+};
+
 export type Principal = StaffPrincipal | ReaderPrincipal;
+
+export type ReaderRequestPrincipal = ReaderPrincipal | AnonymousReaderPrincipal;
 
 export type AiPersona = {
   id: string;
@@ -90,6 +97,7 @@ export type PublishedSnapshot = Readonly<{
 }>;
 
 export type ReadingProgress = {
+  seriesId: string;
   chapterId: string;
   position: number;
   updatedAt: string;
@@ -100,15 +108,31 @@ export type Entitlement = {
   benefit: "public-access" | "early-access" | "ad-free";
 };
 
+export type SeriesFollow = {
+  seriesId: string;
+  followedAt: string;
+};
+
 export type ReaderAccount = {
   id: string;
   progress: Record<string, ReadingProgress>;
   entitlements: Record<string, Entitlement>;
+  follows: Record<string, SeriesFollow>;
 };
 
 export type AnonymousReaderSession = {
   id: string;
   progress: Record<string, ReadingProgress>;
+};
+
+export type ReaderLibraryEntry = {
+  series: PublicCatalogSeries;
+  followedAt: string;
+  continueReading?: ReadingProgress;
+};
+
+export type ReaderLibrary = {
+  entries: ReaderLibraryEntry[];
 };
 
 export function createSeries(
@@ -244,6 +268,37 @@ export function createReaderPrincipal(input: {
   return { kind: "reader", readerAccountId: input.readerAccountId };
 }
 
+export function createAnonymousReaderPrincipal(input: {
+  anonymousSessionId: string;
+}): AnonymousReaderPrincipal {
+  return {
+    kind: "anonymous-reader",
+    anonymousSessionId: input.anonymousSessionId,
+  };
+}
+
+export const READER_ACCOUNT_UPGRADE_REQUIRED =
+  "reader-account-upgrade-required";
+
+export class ReaderAccountUpgradeRequiredError extends Error {
+  readonly code = READER_ACCOUNT_UPGRADE_REQUIRED;
+
+  constructor() {
+    super(
+      "Reader Account is required for library behavior; upgrade the Anonymous Reader Session first",
+    );
+    this.name = "ReaderAccountUpgradeRequiredError";
+  }
+}
+
+export function assertReaderAccountPrincipal(
+  principal: ReaderRequestPrincipal,
+): asserts principal is ReaderPrincipal {
+  if (principal.kind !== "reader") {
+    throw new ReaderAccountUpgradeRequiredError();
+  }
+}
+
 export function createStaffPrincipal(input: {
   staffAccountId: string;
   permissions: string[];
@@ -299,7 +354,23 @@ export function createAnonymousReaderSession(input: {
 }
 
 export function createReaderAccount(input: { id: string }): ReaderAccount {
-  return { id: input.id, progress: {}, entitlements: {} };
+  return { id: input.id, progress: {}, entitlements: {}, follows: {} };
+}
+
+export function followSeries(
+  reader: ReaderAccount,
+  input: { seriesId: string; followedAt: string },
+): ReaderAccount {
+  return {
+    ...reader,
+    follows: {
+      ...reader.follows,
+      [input.seriesId]: {
+        seriesId: input.seriesId,
+        followedAt: input.followedAt,
+      },
+    },
+  };
 }
 
 export function recordAnonymousProgress(
@@ -326,6 +397,87 @@ export function upgradeAnonymousProgress(input: {
       ...input.session.progress,
     },
   };
+}
+
+export function unfollowSeries(
+  reader: ReaderAccount,
+  input: { seriesId: string },
+): ReaderAccount {
+  const follows = { ...reader.follows };
+  delete follows[input.seriesId];
+
+  return { ...reader, follows };
+}
+
+export function recordReaderProgress(
+  reader: ReaderAccount,
+  progress: ReadingProgress,
+): ReaderAccount {
+  return {
+    ...reader,
+    progress: {
+      ...reader.progress,
+      [progress.chapterId]: progress,
+    },
+  };
+}
+
+export function buildReaderLibrary(input: {
+  reader: ReaderAccount;
+  catalog: PublicCatalogSeries[];
+}): ReaderLibrary {
+  const continueReadingBySeries = latestProgressBySeries(input.reader.progress);
+
+  const entries = input.catalog
+    .flatMap((series) => {
+      const follow = input.reader.follows[series.id];
+
+      return follow
+        ? [
+            {
+              series,
+              followedAt: follow.followedAt,
+              continueReading: continueReadingBySeries.get(series.id),
+            },
+          ]
+        : [];
+    })
+    .sort(compareLibraryEntries);
+
+  return { entries };
+}
+
+function latestProgressBySeries(
+  progress: Record<string, ReadingProgress>,
+): Map<string, ReadingProgress> {
+  const latest = new Map<string, ReadingProgress>();
+
+  for (const entry of Object.values(progress)) {
+    const current = latest.get(entry.seriesId);
+
+    if (!current || current.updatedAt < entry.updatedAt) {
+      latest.set(entry.seriesId, entry);
+    }
+  }
+
+  return latest;
+}
+
+function compareLibraryEntries(
+  left: ReaderLibraryEntry,
+  right: ReaderLibraryEntry,
+): number {
+  if (left.continueReading && right.continueReading) {
+    return right.continueReading.updatedAt.localeCompare(
+      left.continueReading.updatedAt,
+    );
+  }
+
+  if (left.continueReading || right.continueReading) {
+    return left.continueReading ? -1 : 1;
+  }
+
+  return right.followedAt.localeCompare(left.followedAt);
 }
 
 export function grantEntitlement(
