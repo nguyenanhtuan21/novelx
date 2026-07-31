@@ -1,8 +1,14 @@
 import {
   createAnonymousReaderSession,
   createReaderAccount,
+  followSeries,
+  recordAnonymousProgress,
+  recordReaderProgress,
+  unfollowSeries,
   type AnonymousReaderSession,
   type ReaderAccount,
+  type ReadingProgress,
+  type SeriesFollow,
 } from "@novelx/shared";
 
 import type { ReaderLibraryRepository } from "./reader-library.repository.js";
@@ -15,26 +21,93 @@ export class InMemoryReaderLibraryRepository implements ReaderLibraryRepository 
   >();
 
   async loadReaderAccount(readerAccountId: string): Promise<ReaderAccount> {
+    return this.readerAccount(readerAccountId);
+  }
+
+  async followSeries(input: {
+    readerAccountId: string;
+    follow: SeriesFollow;
+  }): Promise<void> {
+    this.saveReaderAccount(
+      followSeries(this.readerAccount(input.readerAccountId), input.follow),
+    );
+  }
+
+  async unfollowSeries(input: {
+    readerAccountId: string;
+    seriesId: string;
+  }): Promise<void> {
+    this.saveReaderAccount(
+      unfollowSeries(this.readerAccount(input.readerAccountId), {
+        seriesId: input.seriesId,
+      }),
+    );
+  }
+
+  async recordReaderProgress(input: {
+    readerAccountId: string;
+    progress: ReadingProgress;
+  }): Promise<void> {
+    this.saveReaderAccount(
+      recordReaderProgress(
+        this.readerAccount(input.readerAccountId),
+        input.progress,
+      ),
+    );
+  }
+
+  async loadAnonymousSession(
+    anonymousSessionId: string,
+  ): Promise<AnonymousReaderSession> {
+    return this.anonymousSession(anonymousSessionId);
+  }
+
+  async recordAnonymousProgress(input: {
+    anonymousSessionId: string;
+    progress: ReadingProgress;
+  }): Promise<void> {
+    const session = this.anonymousSession(input.anonymousSessionId);
+
+    this.anonymousSessions.set(
+      session.id,
+      recordAnonymousProgress(session, input.progress),
+    );
+  }
+
+  async upgradeAnonymousSession(input: {
+    anonymousSessionId: string;
+    reader: ReaderAccount;
+  }): Promise<{ readerAccountId: string }> {
+    const session = this.anonymousSession(input.anonymousSessionId);
+
+    if (session.upgradedToReaderAccountId) {
+      return { readerAccountId: session.upgradedToReaderAccountId };
+    }
+
+    this.saveReaderAccount(input.reader);
+    this.anonymousSessions.set(session.id, {
+      ...session,
+      upgradedToReaderAccountId: input.reader.id,
+    });
+
+    return { readerAccountId: input.reader.id };
+  }
+
+  private readerAccount(readerAccountId: string): ReaderAccount {
     return (
       this.readerAccounts.get(readerAccountId) ??
       createReaderAccount({ id: readerAccountId })
     );
   }
 
-  async saveReaderAccount(reader: ReaderAccount): Promise<void> {
-    this.readerAccounts.set(reader.id, reader);
-  }
-
-  async loadAnonymousSession(
-    anonymousSessionId: string,
-  ): Promise<AnonymousReaderSession> {
+  private anonymousSession(anonymousSessionId: string): AnonymousReaderSession {
     return (
       this.anonymousSessions.get(anonymousSessionId) ??
       createAnonymousReaderSession({ id: anonymousSessionId })
     );
   }
 
-  async saveAnonymousSession(session: AnonymousReaderSession): Promise<void> {
-    this.anonymousSessions.set(session.id, session);
+  private saveReaderAccount(reader: ReaderAccount): void {
+    this.readerAccounts.set(reader.id, reader);
   }
 }

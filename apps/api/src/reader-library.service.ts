@@ -9,12 +9,8 @@ import {
   assertReaderAccountPrincipal,
   buildReaderLibrary,
   createReaderAccount,
-  followSeries,
   READER_ACCOUNT_UPGRADE_REQUIRED,
   ReaderAccountUpgradeRequiredError,
-  recordAnonymousProgress,
-  recordReaderProgress,
-  unfollowSeries,
   upgradeAnonymousProgress,
   type AnonymousReaderPrincipal,
   type ReaderLibrary,
@@ -54,17 +50,14 @@ export class ReaderLibraryService {
     seriesId: string;
   }): Promise<ReaderLibrary> {
     const principal = this.requireReaderAccount(input.principal);
-    const [series, reader] = await Promise.all([
-      this.catalogService.getPublicSeries({ seriesId: input.seriesId }),
-      this.readerLibraryRepository.loadReaderAccount(principal.readerAccountId),
-    ]);
+    const series = await this.catalogService.getPublicSeries({
+      seriesId: input.seriesId,
+    });
 
-    await this.readerLibraryRepository.saveReaderAccount(
-      followSeries(reader, {
-        seriesId: series.id,
-        followedAt: this.now(),
-      }),
-    );
+    await this.readerLibraryRepository.followSeries({
+      readerAccountId: principal.readerAccountId,
+      follow: { seriesId: series.id, followedAt: this.now() },
+    });
 
     return this.getLibrary({ principal });
   }
@@ -74,13 +67,11 @@ export class ReaderLibraryService {
     seriesId: string;
   }): Promise<ReaderLibrary> {
     const principal = this.requireReaderAccount(input.principal);
-    const reader = await this.readerLibraryRepository.loadReaderAccount(
-      principal.readerAccountId,
-    );
 
-    await this.readerLibraryRepository.saveReaderAccount(
-      unfollowSeries(reader, { seriesId: input.seriesId }),
-    );
+    await this.readerLibraryRepository.unfollowSeries({
+      readerAccountId: principal.readerAccountId,
+      seriesId: input.seriesId,
+    });
 
     return this.getLibrary({ principal });
   }
@@ -99,24 +90,18 @@ export class ReaderLibraryService {
     };
 
     if (input.principal.kind === "anonymous-reader") {
-      const session = await this.readerLibraryRepository.loadAnonymousSession(
-        this.requireAnonymousSessionId(input.principal),
-      );
-
-      await this.readerLibraryRepository.saveAnonymousSession(
-        recordAnonymousProgress(session, progress),
-      );
+      await this.readerLibraryRepository.recordAnonymousProgress({
+        anonymousSessionId: this.requireAnonymousSessionId(input.principal),
+        progress,
+      });
 
       return progress;
     }
 
-    const reader = await this.readerLibraryRepository.loadReaderAccount(
-      input.principal.readerAccountId,
-    );
-
-    await this.readerLibraryRepository.saveReaderAccount(
-      recordReaderProgress(reader, progress),
-    );
+    await this.readerLibraryRepository.recordReaderProgress({
+      readerAccountId: input.principal.readerAccountId,
+      progress,
+    });
 
     return progress;
   }
@@ -132,26 +117,19 @@ export class ReaderLibraryService {
       return { readerAccountId: input.principal.readerAccountId };
     }
 
-    const session = await this.readerLibraryRepository.loadAnonymousSession(
-      this.requireAnonymousSessionId(input.principal),
-    );
+    const anonymousSessionId = this.requireAnonymousSessionId(input.principal);
+    const session =
+      await this.readerLibraryRepository.loadAnonymousSession(
+        anonymousSessionId,
+      );
 
-    if (session.upgradedToReaderAccountId) {
-      return { readerAccountId: session.upgradedToReaderAccountId };
-    }
-
-    const reader = upgradeAnonymousProgress({
-      session,
-      reader: createReaderAccount({ id: this.newReaderAccountId() }),
+    return this.readerLibraryRepository.upgradeAnonymousSession({
+      anonymousSessionId,
+      reader: upgradeAnonymousProgress({
+        session,
+        reader: createReaderAccount({ id: this.newReaderAccountId() }),
+      }),
     });
-
-    await this.readerLibraryRepository.saveReaderAccount(reader);
-    await this.readerLibraryRepository.saveAnonymousSession({
-      ...session,
-      upgradedToReaderAccountId: reader.id,
-    });
-
-    return { readerAccountId: reader.id };
   }
 
   async getLibrary(input: {

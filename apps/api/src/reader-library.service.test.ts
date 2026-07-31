@@ -6,6 +6,7 @@ import {
   createAnonymousReaderPrincipal,
   createReaderPrincipal,
   READER_ACCOUNT_UPGRADE_REQUIRED,
+  type PublicCatalogSeries,
 } from "@novelx/shared";
 
 import { CatalogService } from "./catalog.service.js";
@@ -95,6 +96,87 @@ describe("Reader Account library API seam", () => {
   });
 });
 
+describe("concurrent writes to one Reader Account library", () => {
+  it("keeps both follows when two Series are followed at the same time", async () => {
+    const service = readerLibraryService(twoSeriesCatalog());
+
+    await Promise.all([
+      service.followSeries({
+        principal: reader,
+        seriesId: "thanh-kiem-trong-mua",
+      }),
+      service.followSeries({
+        principal: reader,
+        seriesId: "den-long-tren-bien-may",
+      }),
+    ]);
+
+    const library = await service.getLibrary({ principal: reader });
+    assert.deepEqual(library.entries.map((entry) => entry.series.id).sort(), [
+      "den-long-tren-bien-may",
+      "thanh-kiem-trong-mua",
+    ]);
+  });
+
+  it("keeps a concurrent follow when another Series is unfollowed", async () => {
+    const service = readerLibraryService(twoSeriesCatalog());
+    await service.followSeries({
+      principal: reader,
+      seriesId: "thanh-kiem-trong-mua",
+    });
+
+    await Promise.all([
+      service.unfollowSeries({
+        principal: reader,
+        seriesId: "thanh-kiem-trong-mua",
+      }),
+      service.followSeries({
+        principal: reader,
+        seriesId: "den-long-tren-bien-may",
+      }),
+    ]);
+
+    const library = await service.getLibrary({ principal: reader });
+    assert.deepEqual(
+      library.entries.map((entry) => entry.series.id),
+      ["den-long-tren-bien-may"],
+    );
+  });
+
+  it("keeps progress for one Series when another Series is written at the same time", async () => {
+    const service = readerLibraryService(twoSeriesCatalog());
+    await service.followSeries({
+      principal: reader,
+      seriesId: "thanh-kiem-trong-mua",
+    });
+    await service.followSeries({
+      principal: reader,
+      seriesId: "den-long-tren-bien-may",
+    });
+
+    await Promise.all([
+      service.recordProgress({
+        principal: reader,
+        seriesId: "thanh-kiem-trong-mua",
+        chapterId: "chuong-1",
+        position: 120,
+      }),
+      service.recordProgress({
+        principal: reader,
+        seriesId: "den-long-tren-bien-may",
+        chapterId: "chuong-mo-dau",
+        position: 340,
+      }),
+    ]);
+
+    const library = await service.getLibrary({ principal: reader });
+    assert.deepEqual(
+      library.entries.map((entry) => entry.continueReading?.position).sort(),
+      [120, 340],
+    );
+  });
+});
+
 describe("Anonymous Reader Session boundary", () => {
   it("prompts an upgrade instead of serving account-only library behavior", async () => {
     const service = readerLibraryService();
@@ -166,12 +248,31 @@ function isUpgradePrompt(error: unknown): boolean {
   );
 }
 
-function readerLibraryService(): ReaderLibraryService {
+function twoSeriesCatalog(): CatalogService {
+  const seedSeries = new SeedCatalogRepository().listSeries();
+
+  return new CatalogService({
+    listSeries: () => [
+      ...seedSeries,
+      {
+        ...(seedSeries[0] as PublicCatalogSeries),
+        id: "den-long-tren-bien-may",
+        title: "Đèn Lồng Trên Biển Mây",
+        firstPublicChapterId: "chuong-mo-dau",
+      },
+    ],
+    getPublicChapter: () => undefined,
+  });
+}
+
+function readerLibraryService(
+  catalogService = new CatalogService(new SeedCatalogRepository()),
+): ReaderLibraryService {
   let mintedReaderAccounts = 0;
 
   return new ReaderLibraryService(
     new InMemoryReaderLibraryRepository(),
-    new CatalogService(new SeedCatalogRepository()),
+    catalogService,
     {
       now: () => "2026-07-31T08:00:00.000Z",
       newReaderAccountId: () => `reader-upgraded-${++mintedReaderAccounts}`,

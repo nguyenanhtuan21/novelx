@@ -1,4 +1,4 @@
-import { Pool, type PoolClient } from "pg";
+import { Pool } from "pg";
 import {
   createAnonymousReaderSession,
   createReaderAccount,
@@ -60,45 +60,53 @@ export class PostgresReaderLibraryRepository implements ReaderLibraryRepository 
     };
   }
 
-  async saveReaderAccount(reader: ReaderAccount): Promise<void> {
-    await this.inTransaction(async (client) => {
-      await client.query(
-        `insert into reader_accounts (id) values ($1)
-         on conflict (id) do nothing`,
-        [reader.id],
-      );
-      await client.query(
-        `delete from series_follows where reader_account_id = $1`,
-        [reader.id],
-      );
+  async followSeries(input: {
+    readerAccountId: string;
+    follow: SeriesFollow;
+  }): Promise<void> {
+    await this.ensureReaderAccount(input.readerAccountId);
+    await this.pool.query(
+      `insert into series_follows (reader_account_id, series_id, followed_at)
+       values ($1, $2, $3)
+       on conflict (reader_account_id, series_id) do update
+         set followed_at = excluded.followed_at`,
+      [input.readerAccountId, input.follow.seriesId, input.follow.followedAt],
+    );
+  }
 
-      for (const follow of Object.values(reader.follows)) {
-        await client.query(
-          `insert into series_follows (reader_account_id, series_id, followed_at)
-           values ($1, $2, $3)`,
-          [reader.id, follow.seriesId, follow.followedAt],
-        );
-      }
+  async unfollowSeries(input: {
+    readerAccountId: string;
+    seriesId: string;
+  }): Promise<void> {
+    await this.pool.query(
+      `delete from series_follows
+        where reader_account_id = $1 and series_id = $2`,
+      [input.readerAccountId, input.seriesId],
+    );
+  }
 
-      for (const progress of Object.values(reader.progress)) {
-        await client.query(
-          `insert into reader_reading_progress
-             (reader_account_id, chapter_id, series_id, scroll_position, updated_at)
-           values ($1, $2, $3, $4, $5)
-           on conflict (reader_account_id, chapter_id) do update
-             set series_id = excluded.series_id,
-                 scroll_position = excluded.scroll_position,
-                 updated_at = excluded.updated_at`,
-          [
-            reader.id,
-            progress.chapterId,
-            progress.seriesId,
-            progress.position,
-            progress.updatedAt,
-          ],
-        );
-      }
-    });
+  async recordReaderProgress(input: {
+    readerAccountId: string;
+    progress: ReadingProgress;
+  }): Promise<void> {
+    await this.ensureReaderAccount(input.readerAccountId);
+    await this.pool.query(
+      `insert into reader_reading_progress
+         (reader_account_id, chapter_id, series_id, scroll_position, updated_at)
+       values ($1, $2, $3, $4, $5)
+       on conflict (reader_account_id, chapter_id) do update
+         set series_id = excluded.series_id,
+             scroll_position = excluded.scroll_position,
+             updated_at = excluded.updated_at
+       where reader_reading_progress.updated_at <= excluded.updated_at`,
+      [
+        input.readerAccountId,
+        input.progress.chapterId,
+        input.progress.seriesId,
+        input.progress.position,
+        input.progress.updatedAt,
+      ],
+    );
   }
 
   async loadAnonymousSession(
@@ -128,8 +136,43 @@ export class PostgresReaderLibraryRepository implements ReaderLibraryRepository 
     };
   }
 
-  async saveAnonymousSession(session: AnonymousReaderSession): Promise<void> {
-    await this.inTransaction(async (client) => {
+  async recordAnonymousProgress(input: {
+    anonymousSessionId: string;
+    progress: ReadingProgress;
+  }): Promise<void> {
+    await this.ensureAnonymousSession(input.anonymousSessionId);
+    await this.pool.query(
+      `insert into anonymous_reading_progress
+         (anonymous_session_id, chapter_id, series_id, scroll_position, updated_at)
+       values ($1, $2, $3, $4, $5)
+       on conflict (anonymous_session_id, chapter_id) do update
+         set series_id = excluded.series_id,
+             scroll_position = excluded.scroll_position,
+             updated_at = excluded.updated_at
+       where anonymous_reading_progress.updated_at <= excluded.updated_at`,
+      [
+        input.anonymousSessionId,
+        input.progress.chapterId,
+        input.progress.seriesId,
+        input.progress.position,
+        input.progress.updatedAt,
+      ],
+    );
+  }
+
+  async upgradeAnonymousSession(input: {
+    anonymousSessionId: string;
+    reader: ReaderAccount;
+  }): Promise<{ readerAccountId: string }> {
+    const client = await this.pool.connect();
+
+    try {
+      await client.query("begin");
+      await client.query(
+        `insert into reader_accounts (id) values ($1)
+         on conflict (id) do nothing`,
+        [input.reader.id],
+      );
       await client.query(
         `insert into anonymous_reader_sessions (id, upgraded_to_reader_account_id)
          values ($1, $2)
@@ -138,45 +181,65 @@ export class PostgresReaderLibraryRepository implements ReaderLibraryRepository 
                  anonymous_reader_sessions.upgraded_to_reader_account_id,
                  excluded.upgraded_to_reader_account_id
                )`,
-        [session.id, session.upgradedToReaderAccountId ?? null],
+        [input.anonymousSessionId, input.reader.id],
       );
 
-      for (const progress of Object.values(session.progress)) {
-        await client.query(
-          `insert into anonymous_reading_progress
-             (anonymous_session_id, chapter_id, series_id, scroll_position, updated_at)
-           values ($1, $2, $3, $4, $5)
-           on conflict (anonymous_session_id, chapter_id) do update
-             set series_id = excluded.series_id,
-                 scroll_position = excluded.scroll_position,
-                 updated_at = excluded.updated_at`,
-          [
-            session.id,
-            progress.chapterId,
-            progress.seriesId,
-            progress.position,
-            progress.updatedAt,
-          ],
-        );
+      const bound = await client.query<{
+        upgraded_to_reader_account_id: string;
+      }>(
+        `select upgraded_to_reader_account_id
+           from anonymous_reader_sessions
+          where id = $1`,
+        [input.anonymousSessionId],
+      );
+      const readerAccountId =
+        bound.rows[0]?.upgraded_to_reader_account_id ?? input.reader.id;
+
+      if (readerAccountId === input.reader.id) {
+        for (const progress of Object.values(input.reader.progress)) {
+          await client.query(
+            `insert into reader_reading_progress
+               (reader_account_id, chapter_id, series_id, scroll_position, updated_at)
+             values ($1, $2, $3, $4, $5)
+             on conflict (reader_account_id, chapter_id) do nothing`,
+            [
+              input.reader.id,
+              progress.chapterId,
+              progress.seriesId,
+              progress.position,
+              progress.updatedAt,
+            ],
+          );
+        }
       }
-    });
-  }
 
-  private async inTransaction(
-    run: (client: PoolClient) => Promise<void>,
-  ): Promise<void> {
-    const client = await this.pool.connect();
-
-    try {
-      await client.query("begin");
-      await run(client);
       await client.query("commit");
+
+      return { readerAccountId };
     } catch (error) {
       await client.query("rollback");
       throw error;
     } finally {
       client.release();
     }
+  }
+
+  private async ensureReaderAccount(readerAccountId: string): Promise<void> {
+    await this.pool.query(
+      `insert into reader_accounts (id) values ($1)
+       on conflict (id) do nothing`,
+      [readerAccountId],
+    );
+  }
+
+  private async ensureAnonymousSession(
+    anonymousSessionId: string,
+  ): Promise<void> {
+    await this.pool.query(
+      `insert into anonymous_reader_sessions (id) values ($1)
+       on conflict (id) do nothing`,
+      [anonymousSessionId],
+    );
   }
 }
 
