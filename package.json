@@ -16,7 +16,7 @@
     "smoke": "npm run smoke --workspaces --if-present",
     "test": "npm run test:ts && npm run test:ai",
     "test:ai": "npm --workspace @novelx/ai-factory run test",
-    "test:ts": "tsx --test \"packages/**/*.test.ts\" \"apps/api/**/*.test.ts\" \"apps/web/**/*.test.ts\"",
+    "test:ts": "npm --workspace @novelx/shared run test && npm --workspace @novelx/api run test && npm --workspace @novelx/web run test",
     "typecheck": "tsc -b",
     "verify": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run smoke && npm run build && npm audit"
   },

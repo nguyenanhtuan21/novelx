@@ -3,8 +3,8 @@ import {
   createSeries,
   createStaffPrincipal,
   publishChapter,
+  type PublicCatalogSeries,
   type PublishedSnapshot,
-  type Series,
 } from "@novelx/shared";
 
 import type { CatalogRepository } from "./catalog.repository.js";
@@ -61,10 +61,12 @@ const seedSnapshot = publishChapter({
 });
 
 export class SeedCatalogRepository implements CatalogRepository {
-  private readonly series: Series[] = [seedSeries];
   private readonly snapshots: PublishedSnapshot[] = [seedSnapshot];
+  private readonly series: PublicCatalogSeries[] = [
+    { ...seedSeries, firstPublicChapterId: seedSnapshot.chapterId },
+  ];
 
-  listSeries(): Series[] {
+  listSeries(): PublicCatalogSeries[] {
     return this.series;
   }
 

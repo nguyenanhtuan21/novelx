@@ -1,28 +1,27 @@
-import { createSeries } from "@novelx/shared";
+import type { PublicCatalogSeries } from "@novelx/shared";
 import Link from "next/link";
+import React from "react";
 
-const featuredSeries = [
-  createSeries({
-    id: "thanh-kiem-trong-mua",
-    title: "Thanh Kiếm Trong Mưa",
-    synopsis:
-      "Kiếm hiệp, mưa đêm, và một lời thề cũ được biên tập cho trải nghiệm đọc mobile.",
-    creativeDisclosure: "Hybrid",
-    taxonomy: {
-      genre: "fantasy",
-      subgenre: "kiem-hiep",
-      tropes: ["hidden-lineage"],
-      moods: ["hopeful"],
-      themes: ["loyalty"],
-      audience: "young-adult",
-      ageRating: "13+",
-      contentWarnings: ["violence"],
-    },
-    status: "active",
-  }),
-];
+export const dynamic = "force-dynamic";
 
-export default function HomePage() {
+const corePlatformApiUrl =
+  process.env.CORE_PLATFORM_API_URL ?? "http://localhost:3001";
+
+async function fetchPublicCatalog(): Promise<PublicCatalogSeries[]> {
+  const response = await fetch(new URL("/catalog/series", corePlatformApiUrl), {
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Core Platform catalog request failed: ${response.status}`);
+  }
+
+  return (await response.json()) as PublicCatalogSeries[];
+}
+
+export default async function HomePage() {
+  const featuredSeries = await fetchPublicCatalog();
+
   return (
     <main className="shell">
       <section className="hero" aria-labelledby="hero-title">
@@ -58,16 +57,22 @@ export default function HomePage() {
                 <dd>{series.taxonomy.ageRating}</dd>
               </div>
               <div>
+                <dt>Trạng thái</dt>
+                <dd>{series.status}</dd>
+              </div>
+              <div>
                 <dt>Cảnh báo</dt>
                 <dd>{series.taxonomy.contentWarnings.join(", ") || "Không"}</dd>
               </div>
             </dl>
-            <Link
-              className="read-link"
-              href={`/series/${series.id}/chapters/chuong-1`}
-            >
-              Đọc chương công khai
-            </Link>
+            {series.firstPublicChapterId ? (
+              <Link
+                className="read-link"
+                href={`/series/${series.id}/chapters/${series.firstPublicChapterId}`}
+              >
+                Đọc chương công khai
+              </Link>
+            ) : null}
           </article>
         ))}
       </section>
