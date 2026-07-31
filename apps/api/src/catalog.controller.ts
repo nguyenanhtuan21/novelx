@@ -13,9 +13,14 @@ export class CatalogController {
     return this.catalogService.listSeries();
   }
 
-  @Get("series/:id/chapters/:chapterId")
+  @Get("series/:seriesId")
+  getPublicSeries(@Param("seriesId") seriesId: string) {
+    return this.catalogService.getPublicSeries({ seriesId });
+  }
+
+  @Get("series/:seriesId/chapters/:chapterId")
   getPublicChapter(
-    @Param("id") seriesId: string,
+    @Param("seriesId") seriesId: string,
     @Param("chapterId") chapterId: string,
   ) {
     return this.catalogService.getPublicChapter({ seriesId, chapterId });

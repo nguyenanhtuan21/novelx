@@ -2,21 +2,15 @@ import type { PublicCatalogSeries } from "@novelx/shared";
 import Link from "next/link";
 import React from "react";
 
+import { fetchPublicCorePlatformJson } from "./core-platform-api";
+
 export const dynamic = "force-dynamic";
 
-const corePlatformApiUrl =
-  process.env.CORE_PLATFORM_API_URL ?? "http://localhost:3001";
-
 async function fetchPublicCatalog(): Promise<PublicCatalogSeries[]> {
-  const response = await fetch(new URL("/catalog/series", corePlatformApiUrl), {
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    throw new Error(`Core Platform catalog request failed: ${response.status}`);
-  }
-
-  return (await response.json()) as PublicCatalogSeries[];
+  return fetchPublicCorePlatformJson<PublicCatalogSeries[]>(
+    "/catalog/series",
+    "catalog",
+  );
 }
 
 export default async function HomePage() {
@@ -65,6 +59,9 @@ export default async function HomePage() {
                 <dd>{series.taxonomy.contentWarnings.join(", ") || "Không"}</dd>
               </div>
             </dl>
+            <Link className="series-link" href={`/series/${series.id}`}>
+              Xem Series
+            </Link>
             {series.firstPublicChapterId ? (
               <Link
                 className="read-link"
