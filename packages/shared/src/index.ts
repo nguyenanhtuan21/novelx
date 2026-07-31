@@ -32,6 +32,10 @@ export type Series = {
   status: "draft" | "active" | "completed" | "hiatus";
 };
 
+export type PublicCatalogSeries = Series & {
+  firstPublicChapterId?: string;
+};
+
 export type StaffPrincipal = {
   kind: "staff";
   staffAccountId: string;

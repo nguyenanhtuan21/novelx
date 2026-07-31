@@ -2,8 +2,8 @@ import { Pool } from "pg";
 import type {
   CreativeDisclosure,
   ManagedTaxonomy,
+  PublicCatalogSeries,
   PublishedSnapshot,
-  Series,
 } from "@novelx/shared";
 
 import type { CatalogRepository } from "./catalog.repository.js";
@@ -14,7 +14,8 @@ type SeriesRow = {
   synopsis: string;
   creative_disclosure: CreativeDisclosure;
   taxonomy: ManagedTaxonomy;
-  status: Series["status"];
+  status: PublicCatalogSeries["status"];
+  first_public_chapter_id: string | null;
 };
 
 type PublishedSnapshotRow = {
@@ -39,9 +40,25 @@ export class PostgresCatalogRepository implements CatalogRepository {
     this.pool = new Pool({ connectionString });
   }
 
-  async listSeries(): Promise<Series[]> {
+  async listSeries(): Promise<PublicCatalogSeries[]> {
     const result = await this.pool.query<SeriesRow>(
-      "select id, title, synopsis, creative_disclosure, taxonomy, status from series where takedown_state = 'available' order by title",
+      `select s.id,
+              s.title,
+              s.synopsis,
+              s.creative_disclosure,
+              s.taxonomy,
+              s.status,
+              first_public_chapter.chapter_id as first_public_chapter_id
+         from series s
+         join lateral (
+           select chapter_id
+             from published_snapshots
+            where series_id = s.id and publicly_readable = true
+            order by chapter_number asc, version desc
+            limit 1
+         ) first_public_chapter on true
+        where s.takedown_state = 'available'
+        order by s.title`,
     );
 
     return result.rows.map((row) => ({
@@ -51,6 +68,7 @@ export class PostgresCatalogRepository implements CatalogRepository {
       creativeDisclosure: row.creative_disclosure,
       taxonomy: row.taxonomy,
       status: row.status,
+      firstPublicChapterId: row.first_public_chapter_id ?? undefined,
     }));
   }
 
