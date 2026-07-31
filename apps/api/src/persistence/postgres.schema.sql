@@ -30,3 +30,18 @@ create table if not exists published_snapshots (
 create index if not exists published_snapshots_public_lookup_idx
   on published_snapshots (series_id, chapter_id, version desc)
   where publicly_readable = true;
+
+create table if not exists anonymous_reader_sessions (
+  id text primary key,
+  progress jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists reader_accounts (
+  id text primary key,
+  progress jsonb not null default '{}'::jsonb,
+  entitlements jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
