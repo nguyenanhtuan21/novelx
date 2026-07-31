@@ -383,9 +383,15 @@ export function recordAnonymousProgress(
     ...session,
     progress: {
       ...session.progress,
-      [progress.chapterId]: progress,
+      [getReadingProgressKey(progress)]: progress,
     },
   };
+}
+
+export function getReadingProgressKey(
+  progress: Pick<ReadingProgress, "seriesId" | "chapterId">,
+): string {
+  return `${encodeURIComponent(progress.seriesId)}/${encodeURIComponent(progress.chapterId)}`;
 }
 
 export function upgradeAnonymousProgress(input: {
@@ -394,10 +400,10 @@ export function upgradeAnonymousProgress(input: {
 }): ReaderAccount {
   return {
     ...input.reader,
-    progress: {
-      ...input.reader.progress,
-      ...input.session.progress,
-    },
+    progress: mergeReadingProgress(
+      input.reader.progress,
+      input.session.progress,
+    ),
   };
 }
 
@@ -419,7 +425,7 @@ export function recordReaderProgress(
     ...reader,
     progress: {
       ...reader.progress,
-      [progress.chapterId]: progress,
+      [getReadingProgressKey(progress)]: progress,
     },
   };
 }
@@ -480,6 +486,22 @@ function compareLibraryEntries(
   }
 
   return right.followedAt.localeCompare(left.followedAt);
+}
+
+function mergeReadingProgress(
+  readerProgress: Record<string, ReadingProgress>,
+  anonymousProgress: Record<string, ReadingProgress>,
+): Record<string, ReadingProgress> {
+  const progress = { ...readerProgress };
+
+  for (const [key, candidate] of Object.entries(anonymousProgress)) {
+    const existing = progress[key];
+    if (!existing || candidate.updatedAt > existing.updatedAt) {
+      progress[key] = candidate;
+    }
+  }
+
+  return progress;
 }
 
 export function grantEntitlement(

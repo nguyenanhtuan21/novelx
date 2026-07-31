@@ -103,6 +103,16 @@ export class ReaderLibraryService {
     chapterId: string;
     position: number;
   }): Promise<ReadingProgress> {
+    if (!Number.isFinite(input.position) || input.position < 0) {
+      throw new BadRequestException("progress position must be non-negative");
+    }
+
+    // Progress only means something against a Chapter the reader may read.
+    await this.catalogService.getPublicChapter({
+      seriesId: input.seriesId,
+      chapterId: input.chapterId,
+    });
+
     const progress: ReadingProgress = {
       seriesId: input.seriesId,
       chapterId: input.chapterId,

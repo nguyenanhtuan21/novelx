@@ -55,7 +55,7 @@ create table if not exists reader_reading_progress (
   series_id text not null references series(id),
   scroll_position integer not null check (scroll_position >= 0),
   updated_at timestamptz not null,
-  primary key (reader_account_id, chapter_id)
+  primary key (reader_account_id, series_id, chapter_id)
 );
 
 -- Anonymous Reader Sessions hold lightweight progress only; no privileged data.
@@ -65,7 +65,7 @@ create table if not exists anonymous_reading_progress (
   series_id text not null references series(id),
   scroll_position integer not null check (scroll_position >= 0),
   updated_at timestamptz not null,
-  primary key (anonymous_session_id, chapter_id)
+  primary key (anonymous_session_id, series_id, chapter_id)
 );
 
 create index if not exists reader_reading_progress_series_idx

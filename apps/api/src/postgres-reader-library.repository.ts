@@ -2,6 +2,7 @@ import { Pool } from "pg";
 import {
   createAnonymousReaderSession,
   createReaderAccount,
+  getReadingProgressKey,
   type AnonymousReaderSession,
   type ReaderAccount,
   type ReadingProgress,
@@ -94,7 +95,7 @@ export class PostgresReaderLibraryRepository implements ReaderLibraryRepository 
       `insert into reader_reading_progress
          (reader_account_id, chapter_id, series_id, scroll_position, updated_at)
        values ($1, $2, $3, $4, $5)
-       on conflict (reader_account_id, chapter_id) do update
+       on conflict (reader_account_id, series_id, chapter_id) do update
          set series_id = excluded.series_id,
              scroll_position = excluded.scroll_position,
              updated_at = excluded.updated_at
@@ -145,7 +146,7 @@ export class PostgresReaderLibraryRepository implements ReaderLibraryRepository 
       `insert into anonymous_reading_progress
          (anonymous_session_id, chapter_id, series_id, scroll_position, updated_at)
        values ($1, $2, $3, $4, $5)
-       on conflict (anonymous_session_id, chapter_id) do update
+       on conflict (anonymous_session_id, series_id, chapter_id) do update
          set series_id = excluded.series_id,
              scroll_position = excluded.scroll_position,
              updated_at = excluded.updated_at
@@ -201,7 +202,7 @@ export class PostgresReaderLibraryRepository implements ReaderLibraryRepository 
             `insert into reader_reading_progress
                (reader_account_id, chapter_id, series_id, scroll_position, updated_at)
              values ($1, $2, $3, $4, $5)
-             on conflict (reader_account_id, chapter_id) do nothing`,
+             on conflict (reader_account_id, series_id, chapter_id) do nothing`,
             [
               input.reader.id,
               progress.chapterId,
@@ -247,14 +248,15 @@ function readingProgressByChapter(
   rows: ReadingProgressRow[],
 ): Record<string, ReadingProgress> {
   return Object.fromEntries(
-    rows.map((row): [string, ReadingProgress] => [
-      row.chapter_id,
-      {
+    rows.map((row): [string, ReadingProgress] => {
+      const progress: ReadingProgress = {
         seriesId: row.series_id,
         chapterId: row.chapter_id,
         position: row.scroll_position,
         updatedAt: row.updated_at.toISOString(),
-      },
-    ]),
+      };
+
+      return [getReadingProgressKey(progress), progress];
+    }),
   );
 }

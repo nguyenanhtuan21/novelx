@@ -294,7 +294,34 @@ describe("anonymous reader progress", () => {
 
     const upgraded = upgradeAnonymousProgress({ session, reader });
 
-    assert.equal(upgraded.progress["chapter-1"]?.position, 1842);
+    assert.equal(upgraded.progress["series-1/chapter-1"]?.position, 1842);
+  });
+
+  it("keeps newer Reader Account progress when an upgrade is retried", () => {
+    const session = recordAnonymousProgress(
+      createAnonymousReaderSession({ id: "anon-1" }),
+      {
+        seriesId: "series-1",
+        chapterId: "chapter-1",
+        position: 1842,
+        updatedAt: "2026-07-31T00:00:00.000Z",
+      },
+    );
+    const reader = {
+      ...createReaderAccount({ id: "reader-1" }),
+      progress: {
+        "series-1/chapter-1": {
+          seriesId: "series-1",
+          chapterId: "chapter-1",
+          position: 2400,
+          updatedAt: "2026-07-31T00:10:00.000Z",
+        },
+      },
+    };
+
+    const upgraded = upgradeAnonymousProgress({ session, reader });
+
+    assert.equal(upgraded.progress["series-1/chapter-1"]?.position, 2400);
   });
 });
 

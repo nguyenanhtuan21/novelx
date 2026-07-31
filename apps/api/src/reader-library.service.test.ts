@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { NotFoundException, UnauthorizedException } from "@nestjs/common";
+import {
+  BadRequestException,
+  NotFoundException,
+  UnauthorizedException,
+} from "@nestjs/common";
 import {
   createAnonymousReaderPrincipal,
   createReaderPrincipal,
@@ -93,6 +97,41 @@ describe("Reader Account library API seam", () => {
       (await service.getLibrary({ principal: reader })).entries,
       [],
     );
+  });
+});
+
+describe("recording progress against public content", () => {
+  it("refuses progress for a Chapter with no Published Snapshot", async () => {
+    const service = readerLibraryService();
+
+    await assert.rejects(
+      () =>
+        service.recordProgress({
+          principal: reader,
+          seriesId: "thanh-kiem-trong-mua",
+          chapterId: "chuong-chua-xuat-ban",
+          position: 10,
+        }),
+      (error: unknown) => error instanceof NotFoundException,
+    );
+  });
+
+  it("refuses a position that is not a real place in the Chapter", async () => {
+    const service = readerLibraryService();
+
+    for (const position of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      await assert.rejects(
+        () =>
+          service.recordProgress({
+            principal: reader,
+            seriesId: "thanh-kiem-trong-mua",
+            chapterId: "chuong-1",
+            position,
+          }),
+        (error: unknown) => error instanceof BadRequestException,
+        `position ${position}`,
+      );
+    }
   });
 });
 
@@ -249,7 +288,16 @@ function isUpgradePrompt(error: unknown): boolean {
 }
 
 function twoSeriesCatalog(): CatalogService {
-  const seedSeries = new SeedCatalogRepository().listSeries();
+  const seedCatalog = new SeedCatalogRepository();
+  const seedSeries = seedCatalog.listSeries();
+  const seedSnapshot = seedCatalog.getPublicChapter({
+    seriesId: "thanh-kiem-trong-mua",
+    chapterId: "chuong-1",
+  });
+  const publicChapters = new Set([
+    "thanh-kiem-trong-mua/chuong-1",
+    "den-long-tren-bien-may/chuong-mo-dau",
+  ]);
 
   return new CatalogService({
     listSeries: () => [
@@ -261,7 +309,10 @@ function twoSeriesCatalog(): CatalogService {
         firstPublicChapterId: "chuong-mo-dau",
       },
     ],
-    getPublicChapter: () => undefined,
+    getPublicChapter: (input) =>
+      publicChapters.has(`${input.seriesId}/${input.chapterId}`)
+        ? seedSnapshot
+        : undefined,
   });
 }
 
