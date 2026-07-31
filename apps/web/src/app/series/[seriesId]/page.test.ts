@@ -66,4 +66,38 @@ describe("public Series page web/API seam", () => {
       /href="\/series\/thanh-kiem-trong-mua\/chapters\/chuong-1"/,
     );
   });
+
+  it("offers a follow control for the Series", async () => {
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          id: "thanh-kiem-trong-mua",
+          firstPublicChapterId: "chuong-1",
+          title: "Thanh Kiếm Trong Mưa",
+          synopsis: "Series kiếm hiệp từ Core Platform API.",
+          status: "active",
+          creativeDisclosure: "Hybrid",
+          taxonomy: {
+            genre: "fantasy",
+            subgenre: "kiem-hiep",
+            tropes: [],
+            moods: [],
+            themes: [],
+            audience: "young-adult",
+            ageRating: "13+",
+            contentWarnings: [],
+          },
+        }),
+        { headers: { "content-type": "application/json" }, status: 200 },
+      );
+
+    const html = renderToStaticMarkup(
+      await SeriesPage({
+        params: Promise.resolve({ seriesId: "thanh-kiem-trong-mua" }),
+      }),
+    );
+
+    assert.match(html, /data-series-id="thanh-kiem-trong-mua"/);
+    assert.match(html, /Theo dõi/);
+  });
 });

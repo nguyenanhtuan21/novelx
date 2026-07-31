@@ -61,5 +61,6 @@ describe("public Curated Catalog web/API seam", () => {
       html,
       /href="\/series\/den-long-tren-bien-may\/chapters\/chuong-mo-dau"/,
     );
+    assert.match(html, /href="\/library"/);
   });
 });

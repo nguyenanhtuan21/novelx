@@ -7,27 +7,19 @@ import {
 import { CatalogController } from "./catalog.controller.js";
 import { CatalogService } from "./catalog.service.js";
 import { HealthController } from "./health.controller.js";
+import { InMemoryReaderLibraryRepository } from "./in-memory-reader-library.repository.js";
 import { PostgresCatalogRepository } from "./postgres-catalog.repository.js";
-import { PostgresReaderProgressRepository } from "./postgres-reader-progress.repository.js";
+import { PostgresReaderLibraryRepository } from "./postgres-reader-library.repository.js";
+import { ReaderLibraryController } from "./reader-library.controller.js";
 import {
-  READER_PROGRESS_REPOSITORY,
-  type ReaderProgressRepository,
-} from "./reader-progress.repository.js";
-import {
-  ReaderAccountProgressController,
-  ReaderProgressController,
-} from "./reader-progress.controller.js";
-import { ReaderProgressService } from "./reader-progress.service.js";
+  READER_LIBRARY_REPOSITORY,
+  type ReaderLibraryRepository,
+} from "./reader-library.repository.js";
+import { ReaderLibraryService } from "./reader-library.service.js";
 import { SeedCatalogRepository } from "./seed-catalog.repository.js";
-import { SeedReaderProgressRepository } from "./seed-reader-progress.repository.js";
 
 @Module({
-  controllers: [
-    CatalogController,
-    HealthController,
-    ReaderProgressController,
-    ReaderAccountProgressController,
-  ],
+  controllers: [CatalogController, HealthController, ReaderLibraryController],
   providers: [
     {
       provide: CATALOG_REPOSITORY,
@@ -43,19 +35,19 @@ import { SeedReaderProgressRepository } from "./seed-reader-progress.repository.
       inject: [CATALOG_REPOSITORY],
     },
     {
-      provide: READER_PROGRESS_REPOSITORY,
+      provide: READER_LIBRARY_REPOSITORY,
       useFactory: () =>
         process.env.DATABASE_URL
-          ? new PostgresReaderProgressRepository(process.env.DATABASE_URL)
-          : new SeedReaderProgressRepository(),
+          ? new PostgresReaderLibraryRepository(process.env.DATABASE_URL)
+          : new InMemoryReaderLibraryRepository(),
     },
     {
-      provide: ReaderProgressService,
+      provide: ReaderLibraryService,
       useFactory: (
+        readerLibraryRepository: ReaderLibraryRepository,
         catalogService: CatalogService,
-        readerProgressRepository: ReaderProgressRepository,
-      ) => new ReaderProgressService(catalogService, readerProgressRepository),
-      inject: [CatalogService, READER_PROGRESS_REPOSITORY],
+      ) => new ReaderLibraryService(readerLibraryRepository, catalogService),
+      inject: [READER_LIBRARY_REPOSITORY, CatalogService],
     },
   ],
 })

@@ -18,6 +18,10 @@ export default async function HomePage() {
 
   return (
     <main className="shell">
+      <nav className="site-nav" aria-label="Điều hướng NovelX">
+        <Link href="/library">Thư viện của tôi</Link>
+      </nav>
+
       <section className="hero" aria-labelledby="hero-title">
         <p className="eyebrow">Catalog tuyển chọn NovelX</p>
         <h1 id="hero-title">

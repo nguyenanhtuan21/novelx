@@ -29,6 +29,9 @@ a {
 .hero,
 .series-card,
 .series-detail,
+.library,
+.library-entry,
+.upgrade-prompt,
 .reader-header,
 .reader-controls {
   background: rgba(255, 252, 245, 0.82);
@@ -123,6 +126,61 @@ dd {
 .read-link {
   background: #23190f;
   color: #fff7eb;
+}
+
+.library,
+.upgrade-prompt {
+  padding: clamp(28px, 6vw, 56px);
+}
+
+.library-list {
+  display: grid;
+  gap: 18px;
+  list-style: none;
+  margin: 28px 0 0;
+  padding: 0;
+}
+
+.library-entry {
+  padding: 24px;
+}
+
+.library-entry h2 {
+  font-size: clamp(1.4rem, 3vw, 2rem);
+  margin: 0 0 8px;
+}
+
+.follow-control {
+  font-family: Arial, sans-serif;
+  margin: 24px 0;
+}
+
+.follow-control button {
+  background: transparent;
+  border: 1px solid rgba(35, 25, 15, 0.36);
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 700;
+  padding: 13px 18px;
+}
+
+.follow-control button[aria-pressed="true"] {
+  background: #23190f;
+  color: #fff7eb;
+}
+
+.follow-control button[disabled] {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.site-nav {
+  display: flex;
+  font-family: Arial, sans-serif;
+  font-weight: 700;
+  gap: 18px;
+  margin-bottom: 18px;
 }
 
 .reader-header,
