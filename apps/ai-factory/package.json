@@ -1,0 +1,10 @@
+{
+  "name": "@novelx/ai-factory",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "python3 -m compileall -q src",
+    "smoke": "PYTHONPATH=src python3 -m novelx_ai_factory.smoke",
+    "test": "PYTHONPATH=src python3 -m unittest discover -s tests"
+  }
+}

@@ -12,7 +12,10 @@ export class CatalogController {
   }
 
   @Get("series/:id/chapters/:chapterId")
-  getPublicChapter(@Param("id") seriesId: string, @Param("chapterId") chapterId: string) {
+  getPublicChapter(
+    @Param("id") seriesId: string,
+    @Param("chapterId") chapterId: string,
+  ) {
     return this.catalogService.getPublicChapter({ seriesId, chapterId });
   }
 }

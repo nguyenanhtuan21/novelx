@@ -1,11 +1,16 @@
-import { createChapterDraft, createSeries, createStaffPrincipal, publishChapter } from "@novelx/shared";
+import {
+  createChapterDraft,
+  createSeries,
+  createStaffPrincipal,
+  publishChapter,
+} from "@novelx/shared";
 
 import { ReaderControls } from "./reader-controls";
 
 const series = createSeries({
   id: "thanh-kiem-trong-mua",
-  title: "Thanh Kiem Trong Mua",
-  synopsis: "Kiem hiep Viet Nam trong curated catalog cua NovelX.",
+  title: "Thanh Kiếm Trong Mưa",
+  synopsis: "Kiếm hiệp Việt Nam trong catalog tuyển chọn của NovelX.",
   creativeDisclosure: "Hybrid",
   taxonomy: {
     genre: "fantasy",
@@ -26,8 +31,8 @@ const chapter = publishChapter({
     id: "chuong-1",
     seriesId: series.id,
     chapterNumber: 1,
-    title: "Mui Mua Dau Tien",
-    body: "Mua roi tren mai ngo. Nguoi giu cong thanh mo phong thu cu, thay dau son cua mot loi the tu nam cu.",
+    title: "Mùi Mưa Đầu Tiên",
+    body: "Mưa rơi trên mái ngõ. Người giữ cổng thành mở phong thư cũ, thấy dấu son của một lời thề từ năm cũ.",
     creativeDisclosure: "Hybrid",
     rightsRecordId: "rights-seed-1",
     provenanceLedgerEntryId: "prov-seed-1",
@@ -45,7 +50,10 @@ const chapter = publishChapter({
       approvedAt: "2026-07-31T00:00:00.000Z",
     },
   }),
-  actor: createStaffPrincipal({ staffAccountId: "staff-seed-editor", permissions: ["chapter:publish"] }),
+  actor: createStaffPrincipal({
+    staffAccountId: "staff-seed-editor",
+    permissions: ["chapter:publish"],
+  }),
   publishedAt: "2026-07-31T00:00:00.000Z",
 });
 
@@ -56,7 +64,8 @@ export default function ChapterPage() {
         <p className="eyebrow">Snapshot đã xuất bản v{chapter.version}</p>
         <h1>{chapter.title}</h1>
         <p>
-          Công khai AI: <strong>{chapter.creativeDisclosure}</strong>. Độ tuổi: {series.taxonomy.ageRating}.
+          Công khai AI: <strong>{chapter.creativeDisclosure}</strong>. Độ tuổi:{" "}
+          {series.taxonomy.ageRating}.
         </p>
       </header>
       <ReaderControls />

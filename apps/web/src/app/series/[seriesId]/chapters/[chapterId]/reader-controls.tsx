@@ -19,7 +19,11 @@ export function ReaderControls() {
   }
 
   return (
-    <section className="reader-controls" aria-label="Tùy chỉnh trình đọc" data-theme={theme}>
+    <section
+      className="reader-controls"
+      aria-label="Tùy chỉnh trình đọc"
+      data-theme={theme}
+    >
       <label>
         Giao diện
         <select
@@ -27,12 +31,20 @@ export function ReaderControls() {
           onChange={(event) => {
             const nextTheme = event.target.value as (typeof themes)[number];
             setTheme(nextTheme);
-            setReaderVariable("--reader-bg", nextTheme === "night" ? "#16120f" : "#fbf1df");
-            setReaderVariable("--reader-fg", nextTheme === "night" ? "#f7ead6" : "#23190f");
+            setReaderVariable(
+              "--reader-bg",
+              nextTheme === "night" ? "#16120f" : "#fbf1df",
+            );
+            setReaderVariable(
+              "--reader-fg",
+              nextTheme === "night" ? "#f7ead6" : "#23190f",
+            );
           }}
         >
           {themes.map((candidate) => (
-            <option key={candidate} value={candidate}>{themeLabels[candidate]}</option>
+            <option key={candidate} value={candidate}>
+              {themeLabels[candidate]}
+            </option>
           ))}
         </select>
       </label>

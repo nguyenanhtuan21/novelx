@@ -11,8 +11,9 @@ import type { CatalogRepository } from "./catalog.repository.js";
 
 const seedSeries = createSeries({
   id: "thanh-kiem-trong-mua",
-  title: "Thanh Kiem Trong Mua",
-  synopsis: "Mot series tien hiep Viet Nam duoc bien tap theo curated catalog cua NovelX.",
+  title: "Thanh Kiếm Trong Mưa",
+  synopsis:
+    "Một series tiên hiệp Việt Nam được biên tập theo catalog tuyển chọn của NovelX.",
   creativeDisclosure: "Hybrid",
   taxonomy: {
     genre: "fantasy",
@@ -33,8 +34,8 @@ const seedSnapshot = publishChapter({
     id: "chuong-1",
     seriesId: seedSeries.id,
     chapterNumber: 1,
-    title: "Mui Mua Dau Tien",
-    body: "Mua roi tren mai ngo, va mot loi the cu duoc nhac lai trong dem.",
+    title: "Mùi Mưa Đầu Tiên",
+    body: "Mưa rơi trên mái ngõ, và một lời thề cũ được nhắc lại trong đêm.",
     creativeDisclosure: "Hybrid",
     rightsRecordId: "rights-seed-1",
     provenanceLedgerEntryId: "prov-seed-1",
@@ -52,7 +53,10 @@ const seedSnapshot = publishChapter({
       approvedAt: "2026-07-31T00:00:00.000Z",
     },
   }),
-  actor: createStaffPrincipal({ staffAccountId: "staff-seed-editor", permissions: ["chapter:publish"] }),
+  actor: createStaffPrincipal({
+    staffAccountId: "staff-seed-editor",
+    permissions: ["chapter:publish"],
+  }),
   publishedAt: "2026-07-31T00:00:00.000Z",
 });
 
@@ -64,9 +68,14 @@ export class SeedCatalogRepository implements CatalogRepository {
     return this.series;
   }
 
-  getPublicChapter(input: { seriesId: string; chapterId: string }): PublishedSnapshot | undefined {
+  getPublicChapter(input: {
+    seriesId: string;
+    chapterId: string;
+  }): PublishedSnapshot | undefined {
     return this.snapshots.find(
-      (candidate) => candidate.seriesId === input.seriesId && candidate.chapterId === input.chapterId,
+      (candidate) =>
+        candidate.seriesId === input.seriesId &&
+        candidate.chapterId === input.chapterId,
     );
   }
 }

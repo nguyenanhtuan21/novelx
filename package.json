@@ -11,15 +11,22 @@
     "build": "npm run build --workspaces --if-present",
     "dev:api": "npm --workspace @novelx/api run start:dev",
     "dev:web": "npm --workspace @novelx/web run dev",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "smoke": "npm run smoke --workspaces --if-present",
     "test": "npm run test:ts && npm run test:ai",
-    "test:ai": "PYTHONPATH=apps/ai-factory/src python3 -m unittest discover -s apps/ai-factory/tests",
+    "test:ai": "npm --workspace @novelx/ai-factory run test",
     "test:ts": "tsx --test \"packages/**/*.test.ts\" \"apps/api/**/*.test.ts\" \"apps/web/**/*.test.ts\"",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "verify": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run smoke && npm run build && npm audit"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
+    "eslint": "^10.8.0",
+    "prettier": "^3.7.4",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.50.0"
   },
   "overrides": {
     "postcss": "8.5.25",

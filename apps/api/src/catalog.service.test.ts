@@ -18,7 +18,10 @@ describe("Core Platform catalog API seam", () => {
   it("serves only a Published Snapshot for public chapter reads", async () => {
     const service = new CatalogService(new SeedCatalogRepository());
 
-    const chapter = await service.getPublicChapter({ seriesId: "thanh-kiem-trong-mua", chapterId: "chuong-1" });
+    const chapter = await service.getPublicChapter({
+      seriesId: "thanh-kiem-trong-mua",
+      chapterId: "chuong-1",
+    });
 
     assert.equal(chapter.publiclyReadable, true);
     assert.equal(chapter.version, 1);

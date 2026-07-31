@@ -107,7 +107,9 @@ export type AnonymousReaderSession = {
   progress: Record<string, ReadingProgress>;
 };
 
-export function createSeries(input: Omit<Series, "status"> & { status?: Series["status"] }): Series {
+export function createSeries(
+  input: Omit<Series, "status"> & { status?: Series["status"] },
+): Series {
   validateManagedTaxonomy(input.taxonomy);
 
   return {
@@ -122,7 +124,9 @@ export function createChapterDraft(input: ChapterDraft): ChapterDraft {
   }
 
   if (!input.provenanceLedgerEntryId.trim()) {
-    throw new Error("Provenance Ledger entry is required before draft workflow entry");
+    throw new Error(
+      "Provenance Ledger entry is required before draft workflow entry",
+    );
   }
 
   return input;
@@ -185,7 +189,9 @@ function validatePublishableDraft(draft: ChapterDraft): void {
   }
 
   if (!draft.provenanceLedgerEntryId) {
-    throw new Error("Provenance Ledger entry is required before public publishing");
+    throw new Error(
+      "Provenance Ledger entry is required before public publishing",
+    );
   }
 
   const blockingFailures = Object.entries(draft.qualityGate)
@@ -193,7 +199,9 @@ function validatePublishableDraft(draft: ChapterDraft): void {
     .map(([name]) => name);
 
   if (blockingFailures.length > 0) {
-    throw new Error(`blocking Quality Gate failure: ${blockingFailures.join(", ")}`);
+    throw new Error(
+      `blocking Quality Gate failure: ${blockingFailures.join(", ")}`,
+    );
   }
 
   if (!draft.humanApproval || draft.qualityGate.humanApproval !== "pass") {
@@ -226,7 +234,9 @@ function createPublishedSnapshot(input: {
   });
 }
 
-export function createReaderPrincipal(input: { readerAccountId: string }): ReaderPrincipal {
+export function createReaderPrincipal(input: {
+  readerAccountId: string;
+}): ReaderPrincipal {
   return { kind: "reader", readerAccountId: input.readerAccountId };
 }
 
@@ -234,12 +244,20 @@ export function createStaffPrincipal(input: {
   staffAccountId: string;
   permissions: string[];
 }): StaffPrincipal {
-  return { kind: "staff", staffAccountId: input.staffAccountId, permissions: input.permissions };
+  return {
+    kind: "staff",
+    staffAccountId: input.staffAccountId,
+    permissions: input.permissions,
+  };
 }
 
-export function assertStaffMayPublish(principal: Principal): asserts principal is StaffPrincipal {
+export function assertStaffMayPublish(
+  principal: Principal,
+): asserts principal is StaffPrincipal {
   if (principal.kind !== "staff") {
-    throw new Error("Staff Account is required for privileged publishing operations");
+    throw new Error(
+      "Staff Account is required for privileged publishing operations",
+    );
   }
 
   if (!principal.permissions.includes("chapter:publish")) {
@@ -256,7 +274,9 @@ export function createAiPersona(input: {
   fakeHumanCredentials?: string;
 }): AiPersona {
   if (input.fakeHumanBiography || input.fakeHumanCredentials) {
-    throw new Error("AI Persona must not present fake-human biography or credentials");
+    throw new Error(
+      "AI Persona must not present fake-human biography or credentials",
+    );
   }
 
   return {
@@ -268,7 +288,9 @@ export function createAiPersona(input: {
   };
 }
 
-export function createAnonymousReaderSession(input: { id: string }): AnonymousReaderSession {
+export function createAnonymousReaderSession(input: {
+  id: string;
+}): AnonymousReaderSession {
   return { id: input.id, progress: {} };
 }
 
@@ -302,7 +324,10 @@ export function upgradeAnonymousProgress(input: {
   };
 }
 
-export function grantEntitlement(reader: ReaderAccount, entitlement: Entitlement): ReaderAccount {
+export function grantEntitlement(
+  reader: ReaderAccount,
+  entitlement: Entitlement,
+): ReaderAccount {
   return {
     ...reader,
     entitlements: {
@@ -319,6 +344,8 @@ function validateManagedTaxonomy(taxonomy: ManagedTaxonomy): void {
     !taxonomy.audience.trim() ||
     !taxonomy.ageRating.trim()
   ) {
-    throw new Error("Managed Taxonomy requires genre, subgenre, audience, and age rating");
+    throw new Error(
+      "Managed Taxonomy requires genre, subgenre, audience, and age rating",
+    );
   }
 }

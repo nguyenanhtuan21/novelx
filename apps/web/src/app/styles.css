@@ -33,7 +33,7 @@ a {
   background: rgba(255, 252, 245, 0.82);
   border: 1px solid rgba(80, 52, 25, 0.18);
   border-radius: 28px;
-  box-shadow: 0 22px 80px rgba(78, 41, 13, 0.10);
+  box-shadow: 0 22px 80px rgba(78, 41, 13, 0.1);
 }
 
 .hero {

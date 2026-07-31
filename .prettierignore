@@ -1,0 +1,12 @@
+.next/
+dist/
+node_modules/
+*.tsbuildinfo
+__pycache__/
+package-lock.json
+.agents/
+.claude/
+AGENTS.md
+CONTEXT.md
+deep-research-report.md
+docs/

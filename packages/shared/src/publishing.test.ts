@@ -21,7 +21,7 @@ describe("publish/read workflow", () => {
   it("requires rights, provenance, quality gate, and human approval before public reading", () => {
     const series = createSeries({
       id: "series-1",
-      title: "Thanh Kiem Trong Mua",
+      title: "Thanh Kiếm Trong Mưa",
       synopsis: "A curated Vietnamese serialized story.",
       creativeDisclosure: "Hybrid",
       taxonomy: {
@@ -62,7 +62,10 @@ describe("publish/read workflow", () => {
     const snapshot = publishChapter({
       series,
       draft,
-      actor: createStaffPrincipal({ staffAccountId: "staff-editor-1", permissions: ["chapter:publish"] }),
+      actor: createStaffPrincipal({
+        staffAccountId: "staff-editor-1",
+        permissions: ["chapter:publish"],
+      }),
     });
 
     assert.equal(snapshot.publiclyReadable, true);
@@ -74,7 +77,7 @@ describe("publish/read workflow", () => {
   it("blocks public publishing when any blocking quality gate condition fails", () => {
     const series = createSeries({
       id: "series-1",
-      title: "Thanh Kiem Trong Mua",
+      title: "Thanh Kiếm Trong Mưa",
       synopsis: "A curated Vietnamese serialized story.",
       creativeDisclosure: "AI-Assisted",
       taxonomy: {
@@ -117,7 +120,10 @@ describe("publish/read workflow", () => {
         publishChapter({
           series,
           draft,
-          actor: createStaffPrincipal({ staffAccountId: "staff-editor-1", permissions: ["chapter:publish"] }),
+          actor: createStaffPrincipal({
+            staffAccountId: "staff-editor-1",
+            permissions: ["chapter:publish"],
+          }),
         }),
       /blocking Quality Gate failure: policySafety/,
     );
@@ -154,7 +160,7 @@ describe("Published Snapshot revisions", () => {
   it("creates a new snapshot for post-publication fixes instead of mutating the prior snapshot", () => {
     const series = createSeries({
       id: "series-1",
-      title: "Thanh Kiem Trong Mua",
+      title: "Thanh Kiếm Trong Mưa",
       synopsis: "A curated Vietnamese serialized story.",
       creativeDisclosure: "Human",
       taxonomy: {
@@ -176,7 +182,10 @@ describe("Published Snapshot revisions", () => {
     const originalSnapshot = publishChapter({
       series,
       draft: originalDraft,
-      actor: createStaffPrincipal({ staffAccountId: "staff-editor-1", permissions: ["chapter:publish"] }),
+      actor: createStaffPrincipal({
+        staffAccountId: "staff-editor-1",
+        permissions: ["chapter:publish"],
+      }),
     });
 
     const fixedSnapshot = revisePublishedChapter({
@@ -186,7 +195,10 @@ describe("Published Snapshot revisions", () => {
         seriesId: series.id,
         body: "Fixed public text.",
       }),
-      actor: createStaffPrincipal({ staffAccountId: "staff-editor-2", permissions: ["chapter:publish"] }),
+      actor: createStaffPrincipal({
+        staffAccountId: "staff-editor-2",
+        permissions: ["chapter:publish"],
+      }),
       reason: "Fix typo reported by editorial QA",
     });
 
@@ -200,12 +212,20 @@ describe("Published Snapshot revisions", () => {
 describe("authorization boundary", () => {
   it("rejects reader principals for staff-only publishing operations", () => {
     assert.throws(
-      () => assertStaffMayPublish(createReaderPrincipal({ readerAccountId: "reader-1" })),
+      () =>
+        assertStaffMayPublish(
+          createReaderPrincipal({ readerAccountId: "reader-1" }),
+        ),
       /Staff Account is required/,
     );
 
     assert.doesNotThrow(() =>
-      assertStaffMayPublish(createStaffPrincipal({ staffAccountId: "staff-1", permissions: ["chapter:publish"] })),
+      assertStaffMayPublish(
+        createStaffPrincipal({
+          staffAccountId: "staff-1",
+          permissions: ["chapter:publish"],
+        }),
+      ),
     );
   });
 });
@@ -263,7 +283,11 @@ describe("anonymous reader progress", () => {
   it("preserves lightweight chapter progress when an anonymous session becomes a reader account", () => {
     const session = recordAnonymousProgress(
       createAnonymousReaderSession({ id: "anon-1" }),
-      { chapterId: "chapter-1", position: 1842, updatedAt: "2026-07-31T00:00:00.000Z" },
+      {
+        chapterId: "chapter-1",
+        position: 1842,
+        updatedAt: "2026-07-31T00:00:00.000Z",
+      },
     );
     const reader = createReaderAccount({ id: "reader-1" });
 
@@ -280,11 +304,18 @@ describe("entitlement boundary", () => {
       benefit: "early-access",
     });
 
-    assert.equal(reader.entitlements["chapter-early-1"]?.benefit, "early-access");
+    assert.equal(
+      reader.entitlements["chapter-early-1"]?.benefit,
+      "early-access",
+    );
   });
 });
 
-function createApprovedDraft(input: { id: string; seriesId: string; body: string }) {
+function createApprovedDraft(input: {
+  id: string;
+  seriesId: string;
+  body: string;
+}) {
   return createChapterDraft({
     id: input.id,
     seriesId: input.seriesId,

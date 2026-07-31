@@ -1,5 +1,10 @@
 import { Pool } from "pg";
-import type { CreativeDisclosure, ManagedTaxonomy, PublishedSnapshot, Series } from "@novelx/shared";
+import type {
+  CreativeDisclosure,
+  ManagedTaxonomy,
+  PublishedSnapshot,
+  Series,
+} from "@novelx/shared";
 
 import type { CatalogRepository } from "./catalog.repository.js";
 
@@ -49,7 +54,10 @@ export class PostgresCatalogRepository implements CatalogRepository {
     }));
   }
 
-  async getPublicChapter(input: { seriesId: string; chapterId: string }): Promise<PublishedSnapshot | undefined> {
+  async getPublicChapter(input: {
+    seriesId: string;
+    chapterId: string;
+  }): Promise<PublishedSnapshot | undefined> {
     const result = await this.pool.query<PublishedSnapshotRow>(
       `select id,
               chapter_id,
