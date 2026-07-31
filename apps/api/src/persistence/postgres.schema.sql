@@ -38,6 +38,7 @@ create table if not exists reader_accounts (
 
 create table if not exists anonymous_reader_sessions (
   id text primary key,
+  upgraded_to_reader_account_id text references reader_accounts(id),
   created_at timestamptz not null default now()
 );
 

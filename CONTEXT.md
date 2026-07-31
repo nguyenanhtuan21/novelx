@@ -64,6 +64,14 @@ _Avoid_: AI-generated, machine-written, fake author disclosure
 An account used by a reader to read, follow series, store progress, participate in community features, and manage reader-facing purchases or preferences.
 _Avoid_: user account, customer account
 
+**Series Follow**:
+A reader account's standing interest in a series, used to build that reader's library and, later, release notifications. A series follow is reader-owned state and says nothing about entitlement to paid or early-access content.
+_Avoid_: subscription, bookmark, favourite
+
+**Reader Library**:
+The reader-account view built from series follows and reading progress: which series a reader follows and where they left off in each. A reader library is per-account state and is not available to an anonymous reader session, which is invited to upgrade instead. It is distinct from the curated catalog, which is the platform-wide content set.
+_Avoid_: bookshelf, my list, catalog
+
 **Anonymous Reader Session**:
 A pre-account reader session that can read public content and preserve lightweight reading progress before being upgraded into a reader account without losing that history. It must not be treated as a place for sensitive or privileged data.
 _Avoid_: guest account, anonymous user

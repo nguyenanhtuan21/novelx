@@ -104,25 +104,41 @@ export class PostgresReaderLibraryRepository implements ReaderLibraryRepository 
   async loadAnonymousSession(
     anonymousSessionId: string,
   ): Promise<AnonymousReaderSession> {
-    const progress = await this.pool.query<ReadingProgressRow>(
-      `select series_id, chapter_id, scroll_position, updated_at
-         from anonymous_reading_progress
-        where anonymous_session_id = $1`,
-      [anonymousSessionId],
-    );
+    const [session, progress] = await Promise.all([
+      this.pool.query<{ upgraded_to_reader_account_id: string | null }>(
+        `select upgraded_to_reader_account_id
+           from anonymous_reader_sessions
+          where id = $1`,
+        [anonymousSessionId],
+      ),
+      this.pool.query<ReadingProgressRow>(
+        `select series_id, chapter_id, scroll_position, updated_at
+           from anonymous_reading_progress
+          where anonymous_session_id = $1`,
+        [anonymousSessionId],
+      ),
+    ]);
+    const upgradedToReaderAccountId =
+      session.rows[0]?.upgraded_to_reader_account_id;
 
     return {
       ...createAnonymousReaderSession({ id: anonymousSessionId }),
       progress: readingProgressByChapter(progress.rows),
+      ...(upgradedToReaderAccountId ? { upgradedToReaderAccountId } : {}),
     };
   }
 
   async saveAnonymousSession(session: AnonymousReaderSession): Promise<void> {
     await this.inTransaction(async (client) => {
       await client.query(
-        `insert into anonymous_reader_sessions (id) values ($1)
-         on conflict (id) do nothing`,
-        [session.id],
+        `insert into anonymous_reader_sessions (id, upgraded_to_reader_account_id)
+         values ($1, $2)
+         on conflict (id) do update
+           set upgraded_to_reader_account_id = coalesce(
+                 anonymous_reader_sessions.upgraded_to_reader_account_id,
+                 excluded.upgraded_to_reader_account_id
+               )`,
+        [session.id, session.upgradedToReaderAccountId ?? null],
       );
 
       for (const progress of Object.values(session.progress)) {

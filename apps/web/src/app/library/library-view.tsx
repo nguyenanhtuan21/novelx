@@ -64,6 +64,23 @@ function LibraryEntry({ entry }: { entry: ReaderLibraryEntry }) {
         <Link href={`/series/${series.id}`}>{series.title}</Link>
       </h2>
       <p>{series.synopsis}</p>
+      <dl>
+        <div>
+          <dt>Tiến độ đọc</dt>
+          <dd>
+            {continueReading ? (
+              <>
+                Chương {continueReading.chapterId}, đã lưu lúc{" "}
+                <time dateTime={continueReading.updatedAt}>
+                  {continueReading.updatedAt}
+                </time>
+              </>
+            ) : (
+              "Chưa có tiến độ đọc"
+            )}
+          </dd>
+        </div>
+      </dl>
       {nextChapterId ? (
         <Link
           className="read-link"

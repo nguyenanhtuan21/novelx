@@ -1,8 +1,9 @@
 import { notFound } from "next/navigation";
 
-export const corePlatformApiUrl =
+const corePlatformApiUrl =
   process.env.CORE_PLATFORM_API_URL ?? "http://localhost:3001";
 
+/** Public catalog reads need no reader session; `fetchCorePlatformJson` carries one. */
 export async function fetchPublicCorePlatformJson<T>(
   path: string,
   resourceName: string,

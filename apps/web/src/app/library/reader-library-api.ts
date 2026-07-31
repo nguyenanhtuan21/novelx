@@ -1,7 +1,6 @@
-import type { ReaderLibrary } from "@novelx/shared";
+import { READER_ACCOUNT_HEADER, type ReaderLibrary } from "@novelx/shared";
 
 import { fetchCorePlatformJson } from "../core-platform-api";
-import { READER_ACCOUNT_HEADER } from "../reader-session";
 
 export async function fetchReaderLibrary(
   readerAccountId: string,

@@ -1,10 +1,13 @@
-import type { ReaderLibrary, ReadingProgress } from "@novelx/shared";
+import {
+  ANONYMOUS_SESSION_HEADER,
+  READER_ACCOUNT_HEADER,
+  type ReaderLibrary,
+  type ReadingProgress,
+} from "@novelx/shared";
 
 import {
   ANONYMOUS_SESSION_COOKIE,
-  ANONYMOUS_SESSION_HEADER,
   READER_ACCOUNT_COOKIE,
-  READER_ACCOUNT_HEADER,
 } from "./reader-session";
 
 /** Browser-visible Core Platform origin; the server-only base URL is not exposed to clients. */

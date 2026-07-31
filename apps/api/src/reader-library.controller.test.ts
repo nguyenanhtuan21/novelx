@@ -114,6 +114,34 @@ describe("Reader Account library HTTP API seam", () => {
     });
   });
 
+  it("keeps one Reader Account library out of another", async () => {
+    await withReaderApi(async (readerApi) => {
+      await readerApi("PUT", "/reader/library/follows/thanh-kiem-trong-mua", {
+        headers: readerHeaders,
+      });
+
+      const otherReader = await readerApi<ReaderLibrary>(
+        "GET",
+        "/reader/library",
+        { headers: { "x-novelx-reader-account-id": "reader-2" } },
+      );
+
+      assert.deepEqual(otherReader.body.entries, []);
+    });
+  });
+
+  it("refuses to follow a Series that is not in the public Curated Catalog", async () => {
+    await withReaderApi(async (readerApi) => {
+      const followed = await readerApi(
+        "PUT",
+        "/reader/library/follows/series-chua-cong-khai",
+        { headers: readerHeaders },
+      );
+
+      assert.equal(followed.status, 404);
+    });
+  });
+
   it("refuses to store session state for an unidentified reader", async () => {
     await withReaderApi(async (readerApi) => {
       const recorded = await readerApi("PUT", "/reader/progress", {

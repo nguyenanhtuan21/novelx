@@ -135,12 +135,21 @@ export class ReaderLibraryService {
     const session = await this.readerLibraryRepository.loadAnonymousSession(
       this.requireAnonymousSessionId(input.principal),
     );
+
+    if (session.upgradedToReaderAccountId) {
+      return { readerAccountId: session.upgradedToReaderAccountId };
+    }
+
     const reader = upgradeAnonymousProgress({
       session,
       reader: createReaderAccount({ id: this.newReaderAccountId() }),
     });
 
     await this.readerLibraryRepository.saveReaderAccount(reader);
+    await this.readerLibraryRepository.saveAnonymousSession({
+      ...session,
+      upgradedToReaderAccountId: reader.id,
+    });
 
     return { readerAccountId: reader.id };
   }

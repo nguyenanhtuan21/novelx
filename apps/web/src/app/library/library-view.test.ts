@@ -40,11 +40,14 @@ describe("Reader Account library view", () => {
       /href="\/series\/thanh-kiem-trong-mua\/chapters\/chuong-3"/,
     );
     assert.match(html, /Đọc tiếp/);
+    assert.match(html, /chuong-3/);
+    assert.match(html, /2026-07-31T09:00:00\.000Z/);
     assert.match(
       html,
       /href="\/series\/den-long-tren-bien-may\/chapters\/chuong-1"/,
     );
     assert.match(html, /Bắt đầu đọc/);
+    assert.match(html, /Chưa có tiến độ đọc/);
   });
 
   it("invites an Anonymous Reader Session to upgrade instead of showing a library", () => {

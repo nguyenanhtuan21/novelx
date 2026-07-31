@@ -143,6 +143,19 @@ describe("Anonymous Reader Session boundary", () => {
     });
     assert.equal(library.entries[0]?.continueReading?.position, 1842);
   });
+
+  it("upgrades a session once instead of minting a Reader Account per call", async () => {
+    const service = readerLibraryService();
+
+    const first = await service.upgradeAnonymousSession({
+      principal: anonymous,
+    });
+    const second = await service.upgradeAnonymousSession({
+      principal: anonymous,
+    });
+
+    assert.equal(second.readerAccountId, first.readerAccountId);
+  });
 });
 
 function isUpgradePrompt(error: unknown): boolean {
@@ -154,12 +167,14 @@ function isUpgradePrompt(error: unknown): boolean {
 }
 
 function readerLibraryService(): ReaderLibraryService {
+  let mintedReaderAccounts = 0;
+
   return new ReaderLibraryService(
     new InMemoryReaderLibraryRepository(),
     new CatalogService(new SeedCatalogRepository()),
     {
       now: () => "2026-07-31T08:00:00.000Z",
-      newReaderAccountId: () => "reader-upgraded-1",
+      newReaderAccountId: () => `reader-upgraded-${++mintedReaderAccounts}`,
     },
   );
 }
