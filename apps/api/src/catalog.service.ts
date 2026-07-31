@@ -22,6 +22,18 @@ export class CatalogService {
       }));
   }
 
+  async getPublicSeries(input: { seriesId: string }) {
+    const series = (await this.listSeries()).find(
+      (candidate) => candidate.id === input.seriesId,
+    );
+
+    if (!series) {
+      throw new NotFoundException("Public Series not found");
+    }
+
+    return series;
+  }
+
   async getPublicChapter(input: { seriesId: string; chapterId: string }) {
     const snapshot = await this.catalogRepository.getPublicChapter(input);
 

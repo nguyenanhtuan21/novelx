@@ -28,6 +28,7 @@ a {
 
 .hero,
 .series-card,
+.series-detail,
 .reader-header,
 .reader-controls {
   background: rgba(255, 252, 245, 0.82);
@@ -38,6 +39,10 @@ a {
 
 .hero {
   padding: clamp(28px, 7vw, 72px);
+}
+
+.series-detail {
+  padding: clamp(28px, 6vw, 56px);
 }
 
 .eyebrow,
@@ -80,6 +85,10 @@ h1 {
   margin: 0;
 }
 
+.metadata-grid {
+  margin: 28px 0;
+}
+
 dl {
   display: grid;
   gap: 14px;
@@ -96,16 +105,24 @@ dd {
   margin: 0;
 }
 
+.series-link,
 .read-link {
   align-self: end;
-  background: #23190f;
   border-radius: 999px;
-  color: #fff7eb;
   font-family: Arial, sans-serif;
   font-weight: 700;
   padding: 13px 18px;
   text-align: center;
   text-decoration: none;
+}
+
+.series-link {
+  border: 1px solid rgba(35, 25, 15, 0.36);
+}
+
+.read-link {
+  background: #23190f;
+  color: #fff7eb;
 }
 
 .reader-header,

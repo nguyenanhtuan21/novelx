@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, it } from "node:test";
 
 import { NestFactory } from "@nestjs/core";
-import type { PublicCatalogSeries } from "@novelx/shared";
+import type { PublicCatalogSeries, PublishedSnapshot } from "@novelx/shared";
 
 import { AppModule } from "./app.module.js";
 
@@ -44,6 +44,53 @@ describe("Core Platform catalog HTTP API seam", () => {
       assert.equal(series?.creativeDisclosure, "Hybrid");
       assert.equal(series?.taxonomy.genre, "fantasy");
       assert.equal(series?.firstPublicChapterId, "chuong-1");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("serializes a public Series detail page payload", async () => {
+    const app = await NestFactory.create(AppModule, { logger: false });
+    await app.listen(0);
+
+    try {
+      const address = app.getHttpServer().address() as AddressInfo;
+      const response = await fetch(
+        `http://127.0.0.1:${address.port}/catalog/series/thanh-kiem-trong-mua`,
+      );
+      const body = await response.text();
+
+      assert.equal(response.status, 200, body);
+      const series = JSON.parse(body) as PublicCatalogSeries;
+
+      assert.equal(series.title, "Thanh Kiếm Trong Mưa");
+      assert.equal(series.creativeDisclosure, "Hybrid");
+      assert.deepEqual(series.taxonomy.contentWarnings, ["violence"]);
+      assert.equal(series.status, "active");
+      assert.equal(series.firstPublicChapterId, "chuong-1");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("serializes public Chapter reads from Published Snapshot data", async () => {
+    const app = await NestFactory.create(AppModule, { logger: false });
+    await app.listen(0);
+
+    try {
+      const address = app.getHttpServer().address() as AddressInfo;
+      const response = await fetch(
+        `http://127.0.0.1:${address.port}/catalog/series/thanh-kiem-trong-mua/chapters/chuong-1`,
+      );
+      const body = await response.text();
+
+      assert.equal(response.status, 200, body);
+      const snapshot = JSON.parse(body) as PublishedSnapshot;
+
+      assert.equal(snapshot.chapterId, "chuong-1");
+      assert.equal(snapshot.publiclyReadable, true);
+      assert.equal(snapshot.version, 1);
+      assert.equal(snapshot.provenanceLedgerEntryId, "prov-seed-1");
     } finally {
       await app.close();
     }
