@@ -1,0 +1,27 @@
+{
+  "name": "novelx",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev:api": "npm --workspace @novelx/api run start:dev",
+    "dev:web": "npm --workspace @novelx/web run dev",
+    "test": "npm run test:ts && npm run test:ai",
+    "test:ai": "PYTHONPATH=apps/ai-factory/src python3 -m unittest discover -s apps/ai-factory/tests",
+    "test:ts": "tsx --test \"packages/**/*.test.ts\" \"apps/api/**/*.test.ts\" \"apps/web/**/*.test.ts\"",
+    "typecheck": "tsc -b"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}
