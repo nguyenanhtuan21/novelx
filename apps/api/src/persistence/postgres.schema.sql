@@ -70,3 +70,17 @@ create table if not exists anonymous_reading_progress (
 
 create index if not exists reader_reading_progress_series_idx
   on reader_reading_progress (reader_account_id, series_id, updated_at desc);
+
+-- Privileged staff operations, including refused attempts. Append-only:
+-- nothing in the application updates or deletes a staff audit record.
+create table if not exists staff_audit_records (
+  id bigint generated always as identity primary key,
+  actor jsonb not null,
+  action text not null,
+  target text not null,
+  outcome text not null check (outcome in ('allowed', 'denied')),
+  recorded_at timestamptz not null
+);
+
+create index if not exists staff_audit_records_recent_idx
+  on staff_audit_records (recorded_at desc, id desc);
