@@ -1,11 +1,6 @@
-import "reflect-metadata";
-
 import assert from "node:assert/strict";
-import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, it } from "node:test";
 
-import { NestFactory } from "@nestjs/core";
-import type { INestApplication } from "@nestjs/common";
 import {
   createAnonymousReaderPrincipal,
   createReaderPrincipal,
@@ -13,7 +8,7 @@ import {
   type ReadingProgress,
 } from "@novelx/shared";
 
-import { AppModule } from "./app.module.js";
+import { restoreEnv, withApi } from "./api-test-client.js";
 import { signReaderSessionToken } from "./reader-session-token.js";
 
 const originalDatabaseUrl = process.env.DATABASE_URL;
@@ -38,7 +33,7 @@ describe("Reader Account library HTTP API seam", () => {
   });
 
   it("follows, lists, and unfollows a Series for a Reader Account", async () => {
-    await withReaderApi(async (readerApi) => {
+    await withApi(async (readerApi) => {
       const followed = await readerApi<ReaderLibrary>(
         "PUT",
         "/reader/library/follows/thanh-kiem-trong-mua",
@@ -71,7 +66,7 @@ describe("Reader Account library HTTP API seam", () => {
   });
 
   it("shows continue-reading state for the followed Series", async () => {
-    await withReaderApi(async (readerApi) => {
+    await withApi(async (readerApi) => {
       await readerApi("PUT", "/reader/library/follows/thanh-kiem-trong-mua", {
         headers: readerHeaders,
       });
@@ -102,7 +97,7 @@ describe("Reader Account library HTTP API seam", () => {
   });
 
   it("prompts an Anonymous Reader Session to upgrade before library behavior", async () => {
-    await withReaderApi(async (readerApi) => {
+    await withApi(async (readerApi) => {
       const listed = await readerApi<{ error: string; upgradePath: string }>(
         "GET",
         "/reader/library",
@@ -124,7 +119,7 @@ describe("Reader Account library HTTP API seam", () => {
   });
 
   it("keeps one Reader Account library out of another", async () => {
-    await withReaderApi(async (readerApi) => {
+    await withApi(async (readerApi) => {
       await readerApi("PUT", "/reader/library/follows/thanh-kiem-trong-mua", {
         headers: readerHeaders,
       });
@@ -144,7 +139,7 @@ describe("Reader Account library HTTP API seam", () => {
   });
 
   it("refuses to follow a Series that is not in the public Curated Catalog", async () => {
-    await withReaderApi(async (readerApi) => {
+    await withApi(async (readerApi) => {
       const followed = await readerApi(
         "PUT",
         "/reader/library/follows/series-chua-cong-khai",
@@ -156,7 +151,7 @@ describe("Reader Account library HTTP API seam", () => {
   });
 
   it("refuses to store session state for an unidentified reader", async () => {
-    await withReaderApi(async (readerApi) => {
+    await withApi(async (readerApi) => {
       const recorded = await readerApi("PUT", "/reader/progress", {
         headers: {},
         body: {
@@ -175,7 +170,7 @@ describe("Reader Account library HTTP API seam", () => {
   });
 
   it("upgrades an Anonymous Reader Session into a Reader Account with its progress", async () => {
-    await withReaderApi(async (readerApi) => {
+    await withApi(async (readerApi) => {
       await readerApi("PUT", "/reader/progress", {
         headers: anonymousHeaders,
         body: {
@@ -206,7 +201,7 @@ describe("Reader Account library HTTP API seam", () => {
   });
 
   it("issues an Anonymous Reader Session token to a reader with none", async () => {
-    await withReaderApi(async (readerApi) => {
+    await withApi(async (readerApi) => {
       const started = await readerApi<{ token: string }>(
         "POST",
         "/reader/sessions",
@@ -239,7 +234,7 @@ describe("forged reader identity", () => {
   });
 
   it("refuses to act as a Reader Account named by an unsigned or re-signed token", async () => {
-    await withReaderApi(async (readerApi) => {
+    await withApi(async (readerApi) => {
       await readerApi("PUT", "/reader/library/follows/thanh-kiem-trong-mua", {
         headers: readerHeaders,
       });
@@ -282,48 +277,4 @@ function sessionHeaders(
       issuedAt: "2026-07-31T08:00:00.000Z",
     })}`,
   };
-}
-
-function restoreEnv(name: string, original: string | undefined): void {
-  if (original === undefined) {
-    delete process.env[name];
-    return;
-  }
-
-  process.env[name] = original;
-}
-
-type ReaderApi = <T>(
-  method: string,
-  path: string,
-  init: { headers: Record<string, string>; body?: unknown },
-) => Promise<{ status: number; body: T }>;
-
-async function withReaderApi(
-  run: (readerApi: ReaderApi) => Promise<void>,
-): Promise<void> {
-  const app: INestApplication = await NestFactory.create(AppModule, {
-    logger: false,
-  });
-  await app.listen(0);
-
-  try {
-    const { port } = app.getHttpServer().address() as AddressInfo;
-
-    await run(async (method, path, init) => {
-      const response = await fetch(`http://127.0.0.1:${port}${path}`, {
-        method,
-        headers: {
-          ...init.headers,
-          ...(init.body ? { "content-type": "application/json" } : {}),
-        },
-        ...(init.body ? { body: JSON.stringify(init.body) } : {}),
-      });
-      const text = await response.text();
-
-      return { status: response.status, body: JSON.parse(text) };
-    });
-  } finally {
-    await app.close();
-  }
 }

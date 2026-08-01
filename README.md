@@ -37,6 +37,23 @@ npm run build
 npm audit
 ```
 
+## Truy Cập Staff Account
+
+Staff Account tách khỏi Reader Account: staff đăng nhập ở ranh giới riêng và mọi thao tác staff đều để lại Staff Audit Record. Xem `docs/adr/0013-staff-sessions-on-their-own-boundary-with-an-audit-trail.md`.
+
+Core Platform API đọc hai biến môi trường:
+
+- `STAFF_ACCOUNTS`: mảng JSON `[{ "id", "permissions", "credentialSha256" }]`. Không cấu hình nghĩa là deployment không có staff nào.
+- `STAFF_SESSION_SECRET`: secret ký staff session token, tách khỏi `READER_SESSION_SECRET`. Không đặt thì secret sinh theo tiến trình và staff session mất sau khi restart.
+
+Tạo `credentialSha256` từ credential cấp cho một operator:
+
+```bash
+printf %s "$STAFF_CREDENTIAL" | shasum -a 256
+```
+
+Đăng nhập bằng `POST /staff/sessions` với `{ "staffAccountId", "credential" }`, rồi gọi thao tác staff kèm header `X-Staff-Authorization: Staff <token>`.
+
 ## Đường Dẫn Kiểm Tra Nhanh
 
 - Web: `GET /health` trả về `{ "service": "novelx-web", "status": "ok" }`.

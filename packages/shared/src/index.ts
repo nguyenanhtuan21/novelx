@@ -56,6 +56,9 @@ export type Principal = StaffPrincipal | ReaderPrincipal;
 
 export type ReaderRequestPrincipal = ReaderPrincipal | AnonymousReaderPrincipal;
 
+/** Whoever a request presented, which may be no one and is rarely staff. */
+export type RequestPrincipal = Principal | ReaderRequestPrincipal | undefined;
+
 export type AiPersona = {
   id: string;
   displayName: string;
@@ -312,18 +315,117 @@ export function createStaffPrincipal(input: {
   };
 }
 
+export type StaffAuditActor =
+  | { kind: "staff"; staffAccountId: string }
+  | { kind: "reader"; readerAccountId: string }
+  | { kind: "anonymous-reader"; anonymousSessionId: string }
+  | { kind: "unauthenticated" };
+
+/**
+ * The baseline account of a privileged staff operation: who acted, what they
+ * did, what they did it to, whether the boundary let them, and when. Refused
+ * attempts are recorded too, so a reader probing the staff boundary leaves
+ * evidence rather than silence.
+ */
+export type StaffAuditRecord = Readonly<{
+  actor: StaffAuditActor;
+  action: string;
+  target: string;
+  outcome: "allowed" | "denied";
+  recordedAt: string;
+}>;
+
+export function staffAuditActor(principal: RequestPrincipal): StaffAuditActor {
+  switch (principal?.kind) {
+    case "staff":
+      return { kind: "staff", staffAccountId: principal.staffAccountId };
+    case "reader":
+      return { kind: "reader", readerAccountId: principal.readerAccountId };
+    case "anonymous-reader":
+      return {
+        kind: "anonymous-reader",
+        anonymousSessionId: principal.anonymousSessionId,
+      };
+    default:
+      return { kind: "unauthenticated" };
+  }
+}
+
+export function createStaffAuditRecord(input: {
+  actor: StaffAuditActor;
+  action: string;
+  target: string;
+  outcome: StaffAuditRecord["outcome"];
+  recordedAt: string;
+}): StaffAuditRecord {
+  if (!input.action.trim() || !input.target.trim()) {
+    throw new Error("staff audit records must name an action and a target");
+  }
+
+  return Object.freeze({
+    actor: input.actor,
+    action: input.action,
+    target: input.target,
+    outcome: input.outcome,
+    recordedAt: input.recordedAt,
+  });
+}
+
+export const STAFF_ACCESS_REQUIRED = "staff-access-required";
+
+/**
+ * Refusal of a staff operation: either the request names no Staff Account, or
+ * the Staff Account it names does not hold the permission the operation needs.
+ */
+export class StaffAccessDeniedError extends Error {
+  readonly code = STAFF_ACCESS_REQUIRED;
+
+  constructor(
+    message: string,
+    /** Whether a Staff Account was named at all, which decides 401 vs 403. */
+    readonly authenticated: boolean,
+  ) {
+    super(message);
+    this.name = "StaffAccessDeniedError";
+  }
+}
+
+/**
+ * The one gate every staff operation goes through.
+ *
+ * Reader Accounts and Anonymous Reader Sessions are not staff and never become
+ * staff by holding a permission string: only a principal that arrived through
+ * the staff boundary can pass, and only for a permission it actually holds.
+ */
+export function assertStaffAccount(
+  principal: RequestPrincipal,
+): asserts principal is StaffPrincipal {
+  if (principal?.kind !== "staff") {
+    throw new StaffAccessDeniedError(
+      "Staff Account is required for privileged operations",
+      false,
+    );
+  }
+}
+
+export function assertStaffPermission(
+  principal: RequestPrincipal,
+  permission: string,
+): asserts principal is StaffPrincipal {
+  assertStaffAccount(principal);
+
+  if (!principal.permissions.includes(permission)) {
+    throw new StaffAccessDeniedError(
+      `Staff Account lacks ${permission} permission`,
+      true,
+    );
+  }
+}
+
 export function assertStaffMayPublish(
   principal: Principal,
 ): asserts principal is StaffPrincipal {
-  if (principal.kind !== "staff") {
-    throw new Error(
-      "Staff Account is required for privileged publishing operations",
-    );
-  }
-
-  if (!principal.permissions.includes("chapter:publish")) {
-    throw new Error("Staff Account lacks chapter:publish permission");
-  }
+  assertStaffPermission(principal, "chapter:publish");
 }
 
 export function createAiPersona(input: {

@@ -84,6 +84,14 @@ _Avoid_: guest account, anonymous user
 An account used by an operator such as an editor, moderator, admin, or content operations member to perform privileged work. Staff accounts are separate from reader accounts and require stronger authentication, authorization, and audit controls.
 _Avoid_: admin role on reader account, user account
 
+**Staff Session Token**:
+The signed proof that a privileged request acts as a Staff Account, carrying the permissions that account may act on and running out after a short session window. It travels on the staff boundary's own header under its own scheme and is signed with a secret separate from the reader one, so it is a different credential from a Reader Session Token rather than a stronger version of one.
+_Avoid_: admin token, elevated reader session, API key
+
+**Staff Audit Record**:
+The append-only record of a privileged staff operation: actor, action, target, outcome, and time. Refused attempts are recorded too, so a reader or anonymous session probing the staff boundary leaves evidence. It is the operational accountability trail for staff work, distinct from the Provenance Ledger, which is the lineage of content and AI workflow artifacts.
+_Avoid_: activity log, event log, provenance entry
+
 **Weekly Engaged Reading Hours**:
 The north-star metric for NovelX: total valid reading time from legitimate readers in a week, interpreted alongside guardrails such as D30 retention, report rate, AI cost per approved chapter, and ad complaints.
 _Avoid_: pageviews, clicks, raw time-on-site
