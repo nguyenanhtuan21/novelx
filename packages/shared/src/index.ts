@@ -120,11 +120,14 @@ export const RIGHTS_USES = ["ai-workflow", "publishing"] as const;
 export type RightsUse = (typeof RIGHTS_USES)[number];
 
 /** A grant somebody actually gave, and the shape the grant took. */
-export type RightsEvidenceKind =
-  | "signed-licence"
-  | "written-permission"
-  | "work-for-hire"
-  | "public-domain-proof";
+export const RIGHTS_EVIDENCE_KINDS = [
+  "signed-licence",
+  "written-permission",
+  "work-for-hire",
+  "public-domain-proof",
+] as const;
+
+export type RightsEvidenceKind = (typeof RIGHTS_EVIDENCE_KINDS)[number];
 
 /**
  * A claim that only says the material could be reached. These are modelled
@@ -132,7 +135,12 @@ export type RightsEvidenceKind =
  * findable on the Internet is not a grant, and neither is the URL it was found
  * at (ADR-0007).
  */
-export type UnbackedRightsClaim = "public-availability" | "source-url";
+export const UNBACKED_RIGHTS_CLAIMS = [
+  "public-availability",
+  "source-url",
+] as const;
+
+export type UnbackedRightsClaim = (typeof UNBACKED_RIGHTS_CLAIMS)[number];
 
 export type RightsEvidence = Readonly<{
   kind: RightsEvidenceKind | UnbackedRightsClaim;
@@ -569,6 +577,14 @@ export function clearMaterialForWorkflowUse(input: {
   usedAt: string;
 }): WorkflowMaterialAttachment {
   const { material, use, rightsRecord: record } = input;
+  validateWorkflowMaterial(material);
+
+  if (!RIGHTS_USES.includes(use) || !input.territory?.trim()) {
+    throw new Error(
+      `workflow material needs a use (${RIGHTS_USES.join(", ")}) and the territory the use happens in`,
+    );
+  }
+
   const named = `${material.kind} ${material.id}`;
 
   if (!record) {
@@ -670,24 +686,13 @@ function validateWorkflowMaterial(material: WorkflowMaterial): void {
 }
 
 function validateRightsEvidence(evidence: RightsEvidence): void {
-  const unbacked: readonly UnbackedRightsClaim[] = [
-    "public-availability",
-    "source-url",
-  ];
-  const backed: readonly RightsEvidenceKind[] = [
-    "signed-licence",
-    "written-permission",
-    "work-for-hire",
-    "public-domain-proof",
-  ];
-
-  if (unbacked.includes(evidence?.kind as UnbackedRightsClaim)) {
+  if (UNBACKED_RIGHTS_CLAIMS.includes(evidence?.kind as UnbackedRightsClaim)) {
     throw new UnbackedRightsEvidenceError(evidence.kind);
   }
 
-  if (!backed.includes(evidence?.kind as RightsEvidenceKind)) {
+  if (!RIGHTS_EVIDENCE_KINDS.includes(evidence?.kind as RightsEvidenceKind)) {
     throw new Error(
-      `Rights evidence must name how the grant is backed: ${backed.join(", ")}`,
+      `Rights evidence must name how the grant is backed: ${RIGHTS_EVIDENCE_KINDS.join(", ")}`,
     );
   }
 

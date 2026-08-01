@@ -26,6 +26,9 @@ create table if not exists story_bibles (
 -- evidence is the grant somebody gave; a source URL is not one (ADR-0007).
 create table if not exists rights_records (
   id text primary key,
+  -- The order grants were written in, so "most recently recorded" is answerable
+  -- even for two records sharing a timestamp.
+  recorded_seq bigint generated always as identity,
   material_kind text not null check (material_kind in ('asset', 'dataset', 'reference', 'source-material')),
   material_id text not null,
   rights_owner text not null,

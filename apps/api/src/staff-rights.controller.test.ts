@@ -185,6 +185,10 @@ describe("recording a Rights Record", () => {
     });
   });
 
+  /**
+   * A grant a past workflow relied on is evidence, so a second record claiming
+   * the same id is refused rather than allowed to overwrite what it says.
+   */
   it("refuses a second Rights Record claiming an id already held", async () => {
     await withApi(async (api) => {
       const headers = await editorHeaders(api);
@@ -195,10 +199,16 @@ describe("recording a Rights Record", () => {
 
       const duplicate = await api("POST", "/staff/rights-records", {
         headers,
-        body: rightsRecordBody,
+        body: { ...rightsRecordBody, owner: "Somebody Else" },
       });
-
       assert.equal(duplicate.status, 409);
+
+      const held = await api<RightsRecord>(
+        "GET",
+        "/staff/rights-records/rights-1",
+        { headers },
+      );
+      assert.equal(held.body.owner, "Studio Mưa Ngâu");
     });
   });
 
@@ -394,6 +404,38 @@ describe("workflow material a Rights Record covers", () => {
         attached.body.workflowMaterials?.at(0)?.rightsRecordId,
         "rights-ai-1",
       );
+    });
+  });
+
+  /**
+   * Which grant is named matters when an editor has just entered one and is
+   * looking at why it did not clear the use, so the refusal reported is the
+   * most recently recorded grant's rather than whichever is oldest.
+   */
+  it("is refused in the words of the grant most recently recorded", async () => {
+    await withApi(async (api) => {
+      const headers = await editorHeaders(api);
+      await draftChapter(api, headers);
+      for (const id of ["rights-older-1", "rights-newer-1"]) {
+        await api("POST", "/staff/rights-records", {
+          headers,
+          body: {
+            ...rightsRecordBody,
+            id,
+            scope: ["publishing"],
+            aiUseAllowed: false,
+          },
+        });
+      }
+
+      const refused = await api<{ rightsRecordId: string }>(
+        "POST",
+        "/staff/series/series-cms-1/chapters/chuong-1/materials",
+        { headers, body: attachAiUse },
+      );
+
+      assert.equal(refused.status, 409);
+      assert.equal(refused.body.rightsRecordId, "rights-newer-1");
     });
   });
 

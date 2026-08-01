@@ -16,6 +16,7 @@ import { PostgresReaderLibraryRepository } from "./postgres-reader-library.repos
 import { PostgresRightsRepository } from "./postgres-rights.repository.js";
 import { PostgresStaffAuditRepository } from "./postgres-staff-audit.repository.js";
 import { ReaderLibraryController } from "./reader-library.controller.js";
+import { RightsClearance } from "./rights-clearance.js";
 import {
   RIGHTS_REPOSITORY,
   type RightsRepository,
@@ -133,13 +134,19 @@ import { StaffService } from "./staff.service.js";
           : new InMemoryRightsRepository(),
     },
     {
+      provide: RightsClearance,
+      useFactory: (rightsRepository: RightsRepository) =>
+        new RightsClearance(rightsRepository),
+      inject: [RIGHTS_REPOSITORY],
+    },
+    {
       provide: StaffCmsService,
       useFactory: (
         gate: StaffOperationGate,
         staffCmsRepository: StaffCmsRepository,
-        rightsRepository: RightsRepository,
-      ) => new StaffCmsService(gate, staffCmsRepository, rightsRepository),
-      inject: [StaffOperationGate, STAFF_CMS_REPOSITORY, RIGHTS_REPOSITORY],
+        rightsClearance: RightsClearance,
+      ) => new StaffCmsService(gate, staffCmsRepository, rightsClearance),
+      inject: [StaffOperationGate, STAFF_CMS_REPOSITORY, RightsClearance],
     },
     {
       provide: StaffRightsService,

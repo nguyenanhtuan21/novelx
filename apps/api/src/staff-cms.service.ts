@@ -8,7 +8,6 @@ import {
   amendCanon,
   attachWorkflowMaterial,
   authorChapterDraft,
-  clearMaterialForWorkflowUse,
   createSeries,
   createStoryBible,
   lockStoryBible,
@@ -20,11 +19,10 @@ import {
   type Series,
   type StoryBible,
   type WorkflowMaterial,
-  type WorkflowMaterialAttachment,
 } from "@novelx/shared";
 
 import { domainRule } from "./domain-rule.js";
-import type { RightsRepository } from "./rights.repository.js";
+import { RightsClearance } from "./rights-clearance.js";
 import {
   staffAuditTarget,
   type StaffOperation,
@@ -58,7 +56,7 @@ export class StaffCmsService {
   constructor(
     private readonly gate: StaffOperationGate,
     private readonly staffCmsRepository: StaffCmsRepository,
-    private readonly rightsRepository: RightsRepository,
+    private readonly rightsClearance: RightsClearance,
     options: StaffCmsServiceOptions = {},
   ) {
     this.now = options.now ?? (() => new Date().toISOString());
@@ -263,9 +261,8 @@ export class StaffCmsService {
         permission: "chapter:write",
       },
       async () => {
-        const request = this.readMaterialRequest(input);
         const draft = await this.requireChapterDraft(input);
-        const attachment = await this.clearMaterial(request);
+        const attachment = await this.rightsClearance.clear(input);
 
         const attached = domainRule(() =>
           attachWorkflowMaterial({ draft, attachment }),
@@ -275,91 +272,6 @@ export class StaffCmsService {
         return attached;
       },
     );
-  }
-
-  /**
-   * Finds the grant that covers this use, among however many cover the material.
-   *
-   * Material is routinely licensed more than once — publishing under one
-   * contract, AI use under another — so a single record failing is not an
-   * answer. Only when none of them covers the use is the use refused, and the
-   * refusal reported is the first grant's, which is the one an editor is most
-   * likely to be looking at.
-   */
-  private async clearMaterial(request: {
-    material: WorkflowMaterial;
-    use: RightsUse;
-    territory: string;
-    modifies: boolean;
-  }): Promise<WorkflowMaterialAttachment> {
-    const usedAt = this.now();
-    const records = await this.rightsRepository.listForMaterial(
-      request.material,
-    );
-    let refusal: unknown;
-
-    for (const rightsRecord of records) {
-      try {
-        return clearMaterialForWorkflowUse({
-          ...request,
-          rightsRecord,
-          usedAt,
-        });
-      } catch (error) {
-        refusal ??= error;
-      }
-    }
-
-    return domainRule(() => {
-      if (refusal) {
-        throw refusal;
-      }
-
-      return clearMaterialForWorkflowUse({
-        ...request,
-        rightsRecord: undefined,
-        usedAt,
-      });
-    });
-  }
-
-  /** Reads the material an editor named, before any of it is trusted. */
-  private readMaterialRequest(input: {
-    material: WorkflowMaterial;
-    use: RightsUse;
-    territory: string;
-    modifies?: boolean;
-  }): {
-    material: WorkflowMaterial;
-    use: RightsUse;
-    territory: string;
-    modifies: boolean;
-  } {
-    const kinds: WorkflowMaterial["kind"][] = [
-      "asset",
-      "dataset",
-      "reference",
-      "source-material",
-    ];
-    const uses: RightsUse[] = ["ai-workflow", "publishing"];
-
-    if (
-      !input.material?.id?.trim() ||
-      !kinds.includes(input.material?.kind) ||
-      !uses.includes(input.use) ||
-      !input.territory?.trim()
-    ) {
-      throw new BadRequestException(
-        `attaching workflow material needs a material id, a kind (${kinds.join(", ")}), a use (${uses.join(", ")}), and the territory the use happens in`,
-      );
-    }
-
-    return {
-      material: { id: input.material.id, kind: input.material.kind },
-      use: input.use,
-      territory: input.territory,
-      modifies: input.modifies === true,
-    };
   }
 
   private async requireChapterDraft(input: {

@@ -35,23 +35,13 @@ export class PostgresRightsRepository implements RightsRepository {
     this.pool = new Pool({ connectionString });
   }
 
-  async save(record: RightsRecord): Promise<void> {
-    await this.pool.query(
+  async write(record: RightsRecord): Promise<"written" | "already-held"> {
+    // `do nothing` rather than `do update`: the grant a past workflow relied on
+    // is evidence, and an upsert would quietly destroy it.
+    const written = await this.pool.query(
       `insert into rights_records (${COLUMNS})
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-       on conflict (id) do update set
-         material_kind = excluded.material_kind,
-         material_id = excluded.material_id,
-         rights_owner = excluded.rights_owner,
-         scope = excluded.scope,
-         territories = excluded.territories,
-         granted_from = excluded.granted_from,
-         granted_until = excluded.granted_until,
-         modification_allowed = excluded.modification_allowed,
-         ai_use_allowed = excluded.ai_use_allowed,
-         evidence = excluded.evidence,
-         recorded_by_staff_account_id = excluded.recorded_by_staff_account_id,
-         recorded_at = excluded.recorded_at`,
+       on conflict (id) do nothing`,
       [
         record.id,
         record.material.kind,
@@ -68,6 +58,8 @@ export class PostgresRightsRepository implements RightsRepository {
         record.recordedAt,
       ],
     );
+
+    return written.rowCount === 1 ? "written" : "already-held";
   }
 
   async find(rightsRecordId: string): Promise<RightsRecord | undefined> {
@@ -85,7 +77,7 @@ export class PostgresRightsRepository implements RightsRepository {
       `select ${COLUMNS}
          from rights_records
         where material_kind = $1 and material_id = $2
-        order by recorded_at`,
+        order by recorded_at desc, recorded_seq desc`,
       [material.kind, material.id],
     );
 

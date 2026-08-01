@@ -12,7 +12,15 @@ export const RIGHTS_REPOSITORY = Symbol("RIGHTS_REPOSITORY");
  * clears a use is decided by the rights rules, not by the query.
  */
 export type RightsRepository = {
-  save(record: RightsRecord): Promise<void>;
+  /**
+   * Writes a Rights Record that is not already held, answering whether it was
+   * written. A record is what later uses are trusted to, so it is never
+   * overwritten: a grant that has genuinely changed is a new record, and the
+   * old one stays as evidence of what was relied on at the time. Answering
+   * rather than checking first is what makes that true under concurrency.
+   */
+  write(record: RightsRecord): Promise<"written" | "already-held">;
   find(rightsRecordId: string): Promise<RightsRecord | undefined>;
+  /** Every grant covering the material, most recently recorded first. */
   listForMaterial(material: WorkflowMaterial): Promise<RightsRecord[]>;
 };

@@ -81,14 +81,13 @@ export class StaffRightsService {
         // A Rights Record is what later uses are trusted to, so it is written
         // once rather than quietly replaced: a grant that has genuinely changed
         // is a new record, and the old one stays as the evidence of what was
-        // relied on at the time.
-        if (await this.rightsRepository.find(record.id)) {
+        // relied on at the time. The repository answers whether it wrote, so
+        // two editors racing on one id cannot both believe they recorded it.
+        if ((await this.rightsRepository.write(record)) === "already-held") {
           throw new ConflictException(
             `a Rights Record called ${record.id} is already held`,
           );
         }
-
-        await this.rightsRepository.save(record);
 
         return record;
       },
