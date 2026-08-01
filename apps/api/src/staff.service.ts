@@ -8,6 +8,7 @@ import {
 import type { StaffAccountDirectory } from "./staff-accounts.js";
 import type { StaffAuditRepository } from "./staff-audit.repository.js";
 import {
+  staffAuditTarget,
   type StaffOperation,
   StaffOperationGate,
 } from "./staff-operation-gate.js";
@@ -20,12 +21,6 @@ export const STAFF_AUDIT_LOG_MAX_PAGE_SIZE = 500;
 
 /** Staff sessions are short-lived where reader sessions are not. */
 export const STAFF_SESSION_DURATION_MS = 30 * 60 * 1000;
-
-/**
- * An audit target is written from what a request claimed, so it is bounded here
- * rather than letting an unauthenticated caller decide how much staff read.
- */
-const STAFF_AUDIT_TARGET_LIMIT = 64;
 
 export type StaffSession = {
   staffAccountId: string;
@@ -81,7 +76,7 @@ export class StaffService {
       : undefined;
     const operation: StaffOperation = {
       action: "staff.session.sign-in",
-      target: staffAccountTarget(staffAccountId),
+      target: staffAuditTarget("staff-account", staffAccountId),
     };
 
     if (!principal) {
@@ -157,12 +152,6 @@ export class StaffService {
       ).toISOString(),
     };
   }
-}
-
-function staffAccountTarget(staffAccountId: string): string {
-  return `staff-account:${
-    staffAccountId.slice(0, STAFF_AUDIT_TARGET_LIMIT) || "unnamed"
-  }`;
 }
 
 function auditLogPageSize(limit: number | undefined): number {

@@ -10,6 +10,36 @@ create table if not exists series (
   updated_at timestamptz not null default now()
 );
 
+-- The governed record of a Series canon. Locked by an accountable human, whose
+-- account and time are kept together so a lock cannot half-exist.
+create table if not exists story_bibles (
+  series_id text primary key references series(id) on delete cascade,
+  canon jsonb not null,
+  locked_by_staff_account_id text,
+  locked_at timestamptz,
+  updated_at timestamptz not null default now(),
+  check ((locked_by_staff_account_id is null) = (locked_at is null))
+);
+
+-- Chapters being written. There is deliberately no publicly_readable column:
+-- reader-facing access runs through published_snapshots, so a draft has no
+-- public route by construction rather than by a flag someone must remember.
+create table if not exists chapter_drafts (
+  id text primary key,
+  series_id text not null references series(id) on delete cascade,
+  chapter_number integer not null check (chapter_number > 0),
+  title text not null,
+  body text not null,
+  creative_disclosure text not null check (creative_disclosure in ('Human', 'Hybrid', 'AI-Assisted')),
+  rights_record_id text,
+  provenance_ledger_entry_id text,
+  quality_gate jsonb,
+  human_approval jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (series_id, chapter_number)
+);
+
 create table if not exists published_snapshots (
   id text primary key,
   chapter_id text not null,

@@ -20,6 +20,24 @@ import type { StaffAuditRepository } from "./staff-audit.repository.js";
 
 export const STAFF_OPERATION_GATE = Symbol("STAFF_OPERATION_GATE");
 
+/**
+ * An audit target is written from what a request claimed, so it is bounded here
+ * rather than letting an unauthenticated caller decide how much staff read.
+ */
+const STAFF_AUDIT_TARGET_LIMIT = 64;
+
+/**
+ * Names what a staff operation acted on, from whatever the request claimed it
+ * was. An operation that named nothing still names something, because a record
+ * that omits its target is not evidence of anything.
+ */
+export function staffAuditTarget(kind: string, id: unknown): string {
+  const named =
+    typeof id === "string" ? id.slice(0, STAFF_AUDIT_TARGET_LIMIT) : "";
+
+  return `${kind}:${named || "unnamed"}`;
+}
+
 /** What a staff operation is called, what it acts on, and what it demands. */
 export type StaffOperation = {
   action: string;
