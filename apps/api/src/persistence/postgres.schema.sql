@@ -93,6 +93,34 @@ create index if not exists published_snapshots_public_lookup_idx
   on published_snapshots (series_id, chapter_id, version desc)
   where publicly_readable = true;
 
+-- How content and AI workflow artifacts were created, evaluated, edited,
+-- approved, revised, and published (ADR-0008). Append-only: nothing in the
+-- application updates or deletes an entry, because lineage that can be
+-- rewritten says nothing about how content was made.
+create table if not exists provenance_ledger_entries (
+  id text primary key,
+  -- The order entries were written in, so "most recent" is answerable even for
+  -- two entries sharing a timestamp.
+  recorded_seq bigint generated always as identity,
+  -- An accountable Staff Account, or the AI workflow run itself.
+  source jsonb not null,
+  action text not null,
+  target_kind text not null check (target_kind in ('series', 'story-bible', 'chapter-draft', 'published-snapshot')),
+  target_id text not null,
+  -- Deliberately not a foreign key: lineage is evidence of what happened, so it
+  -- has to outlive whatever it traces rather than cascade away with it.
+  series_id text not null,
+  -- What the traced artifact was at that moment, in its own terms.
+  version jsonb not null,
+  recorded_at timestamptz not null
+);
+
+create index if not exists provenance_ledger_entries_series_idx
+  on provenance_ledger_entries (series_id, recorded_at desc, recorded_seq desc);
+
+create index if not exists provenance_ledger_entries_target_idx
+  on provenance_ledger_entries (series_id, target_kind, target_id, recorded_at desc, recorded_seq desc);
+
 create table if not exists reader_accounts (
   id text primary key,
   created_at timestamptz not null default now()

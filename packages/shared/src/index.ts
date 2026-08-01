@@ -234,6 +234,85 @@ export type PublishedSnapshot = Readonly<{
   publiclyReadable: true;
 }>;
 
+/**
+ * Where a traced change came from: an accountable person, or an AI workflow
+ * run. A run is named as itself rather than as whoever started it, because how
+ * AI-assisted content was made is the fact this ledger exists to keep.
+ */
+export type ProvenanceSource =
+  | { kind: "staff"; staffAccountId: string }
+  | { kind: "ai-workflow"; workspaceId: string; workflowRunId: string };
+
+/** The artifacts whose lineage the ledger traces. */
+export const PROVENANCE_TARGET_KINDS = [
+  "series",
+  "story-bible",
+  "chapter-draft",
+  "published-snapshot",
+] as const;
+
+export type ProvenanceTargetKind = (typeof PROVENANCE_TARGET_KINDS)[number];
+
+/**
+ * The artifact an entry traces. Every one of them belongs to a Series, and the
+ * Series is carried on the entry so a Series' lineage can be read whole rather
+ * than reassembled from the ids of everything under it.
+ */
+export type ProvenanceTarget = Readonly<{
+  kind: ProvenanceTargetKind;
+  id: string;
+  seriesId: string;
+}>;
+
+/**
+ * What the traced artifact was when the action happened, in the terms the
+ * artifact already carries. The ledger says which version an action produced;
+ * the CMS holds the version itself, so an entry names canon entries and
+ * chapter numbers rather than copying prose that would then drift.
+ */
+export type ProvenanceVersion =
+  | {
+      kind: "series";
+      status: Series["status"];
+      creativeDisclosure: CreativeDisclosure;
+    }
+  | { kind: "story-bible"; canonEntryIds: readonly string[]; locked: boolean }
+  | {
+      kind: "chapter-draft";
+      chapterNumber: number;
+      /** The grants that cleared the material this draft's workflow carries. */
+      rightsRecordIds: readonly string[];
+    }
+  | { kind: "published-snapshot"; chapterId: string; version: number };
+
+/**
+ * What an entry is about: which artifact, and what it was at that moment. The
+ * two travel together because an entry whose version context describes some
+ * other artifact points at the wrong content, which is worse than none.
+ */
+export type ProvenanceSubject = Readonly<{
+  target: ProvenanceTarget;
+  version: ProvenanceVersion;
+}>;
+
+/**
+ * One line of the Provenance Ledger: how content or an AI workflow artifact was
+ * created, evaluated, edited, approved, revised, or published (ADR-0008).
+ *
+ * It is written once and never changed. This is lineage rather than operational
+ * accountability, which is what keeps it distinct from a Staff Audit Record: an
+ * entry exists because content changed, so refused attempts leave none, and an
+ * AI workflow run appears here as a source in its own right.
+ */
+export type ProvenanceEntry = Readonly<{
+  id: string;
+  source: ProvenanceSource;
+  action: string;
+  target: ProvenanceTarget;
+  version: ProvenanceVersion;
+  recordedAt: string;
+}>;
+
 export type ReadingProgress = {
   seriesId: string;
   chapterId: string;
@@ -873,6 +952,129 @@ function createPublishedSnapshot(input: {
     publishedAt: input.publishedAt ?? new Date().toISOString(),
     publishedByStaffAccountId: input.actor.staffAccountId,
     publiclyReadable: true,
+  });
+}
+
+/** Names a content change after the principal that made it, and nothing else. */
+export function provenanceSource(
+  principal: StaffPrincipal | AiWorkflowPrincipal,
+): ProvenanceSource {
+  return principal.kind === "staff"
+    ? { kind: "staff", staffAccountId: principal.staffAccountId }
+    : {
+        kind: "ai-workflow",
+        workspaceId: principal.workspaceId,
+        workflowRunId: principal.workflowRunId,
+      };
+}
+
+export function seriesProvenance(series: Series): ProvenanceSubject {
+  return subject(
+    { kind: "series", id: series.id, seriesId: series.id },
+    {
+      kind: "series",
+      status: series.status,
+      creativeDisclosure: series.creativeDisclosure,
+    },
+  );
+}
+
+export function storyBibleProvenance(
+  storyBible: StoryBible,
+): ProvenanceSubject {
+  return subject(
+    {
+      kind: "story-bible",
+      id: storyBible.seriesId,
+      seriesId: storyBible.seriesId,
+    },
+    {
+      kind: "story-bible",
+      canonEntryIds: storyBible.canon.map((entry) => entry.id),
+      locked: storyBible.lock !== undefined,
+    },
+  );
+}
+
+export function chapterDraftProvenance(draft: ChapterDraft): ProvenanceSubject {
+  return subject(
+    { kind: "chapter-draft", id: draft.id, seriesId: draft.seriesId },
+    {
+      kind: "chapter-draft",
+      chapterNumber: draft.chapterNumber,
+      rightsRecordIds: (draft.workflowMaterials ?? []).map(
+        (attachment) => attachment.rightsRecordId,
+      ),
+    },
+  );
+}
+
+export function publishedSnapshotProvenance(
+  snapshot: PublishedSnapshot,
+): ProvenanceSubject {
+  return subject(
+    {
+      kind: "published-snapshot",
+      id: snapshot.id,
+      seriesId: snapshot.seriesId,
+    },
+    {
+      kind: "published-snapshot",
+      chapterId: snapshot.chapterId,
+      version: snapshot.version,
+    },
+  );
+}
+
+/**
+ * Writes one line of lineage. The entry is frozen because the ledger is
+ * append-only: a correction is a later entry saying what changed, never a
+ * quieter edit of what the ledger said before.
+ */
+export function createProvenanceEntry(input: {
+  id: string;
+  source: ProvenanceSource;
+  action: string;
+  subject: ProvenanceSubject;
+  recordedAt: string;
+}): ProvenanceEntry {
+  const { target, version } = input.subject ?? {};
+
+  if (
+    !input.id?.trim() ||
+    !input.action?.trim() ||
+    !target?.id?.trim() ||
+    !target.seriesId?.trim() ||
+    !PROVENANCE_TARGET_KINDS.includes(target.kind)
+  ) {
+    throw new Error(
+      "Provenance Ledger entry needs an id, an action, and the artifact it traces",
+    );
+  }
+
+  if (version?.kind !== target.kind) {
+    throw new Error(
+      `version context describes a ${version?.kind ?? "nothing"}, not a ${target.kind}`,
+    );
+  }
+
+  return Object.freeze({
+    id: input.id,
+    source: Object.freeze({ ...input.source }),
+    action: input.action,
+    target: Object.freeze({ ...target }),
+    version: Object.freeze({ ...version }),
+    recordedAt: input.recordedAt,
+  });
+}
+
+function subject(
+  target: ProvenanceTarget,
+  version: ProvenanceVersion,
+): ProvenanceSubject {
+  return Object.freeze({
+    target: Object.freeze(target),
+    version: Object.freeze(version),
   });
 }
 

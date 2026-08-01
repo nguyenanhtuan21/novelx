@@ -71,6 +71,17 @@ Canon đã lock vẫn sửa được, nhưng phải kèm `reason`; thiếu nó t
 
 Draft Chapter không có đường ra công khai: người đọc chỉ tiếp cận Published Snapshot qua catalog, nên draft nằm ngoài mọi read path công khai theo cấu trúc chứ không phải nhờ một cờ phải nhớ kiểm tra.
 
+## Provenance Ledger
+
+Mỗi thao tác nội dung thành công trong Staff CMS ghi thêm một provenance entry: nguồn (Staff Account hoặc AI workflow run), action, artifact được truy vết, và version context của artifact đó tại thời điểm ấy. Ledger chỉ nhận thêm, không sửa và không xoá; một thao tác bị từ chối không để lại lineage vì không có gì được tạo ra — bằng chứng cho lần thử đó nằm ở Staff Audit Record. Xem `docs/adr/0016-lineage-is-appended-where-content-changes.md`.
+
+| Thao tác                     | Endpoint                                                       | Permission        |
+| ---------------------------- | -------------------------------------------------------------- | ----------------- |
+| Đọc lineage của một Series   | `GET /staff/series/:seriesId/provenance`                       | `provenance:read` |
+| Đọc lineage của một artifact | `GET /staff/series/:seriesId/provenance/:targetKind/:targetId` | `provenance:read` |
+
+`targetKind` là một trong `series`, `story-bible`, `chapter-draft`, `published-snapshot`. Cả hai endpoint trả entry mới nhất trước, nhận `?limit=` với mặc định 50 và tối đa 500.
+
 ## Đường Dẫn Kiểm Tra Nhanh
 
 - Web: `GET /health` trả về `{ "service": "novelx-web", "status": "ok" }`.
