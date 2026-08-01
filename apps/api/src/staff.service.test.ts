@@ -10,6 +10,7 @@ import {
 import { InMemoryStaffAuditRepository } from "./in-memory-staff-audit.repository.js";
 import type { StaffAuditRepository } from "./staff-audit.repository.js";
 import type { StaffAccountDirectory } from "./staff-accounts.js";
+import { StaffOperationGate } from "./staff-operation-gate.js";
 import { staffPrincipalFromToken } from "./staff-session-token.js";
 import {
   STAFF_AUDIT_LOG_MAX_PAGE_SIZE,
@@ -37,11 +38,9 @@ const directory: StaffAccountDirectory = {
 describe("staff session window", () => {
   it("runs out a fixed session after it was issued", async () => {
     process.env.STAFF_SESSION_SECRET = secret;
-    const service = new StaffService(
-      directory,
-      new InMemoryStaffAuditRepository(),
-      { now: () => signedInAt, sessionDurationMs: 15 * 60 * 1000 },
-    );
+    const service = staffService(new InMemoryStaffAuditRepository(), {
+      sessionDurationMs: 15 * 60 * 1000,
+    });
 
     const session = await service.signIn({
       staffAccountId: "staff-editor-1",
@@ -69,9 +68,7 @@ describe("staff session window", () => {
 
   it("records the staff operation at the time it happened", async () => {
     const staffAuditRepository = new InMemoryStaffAuditRepository();
-    const service = new StaffService(directory, staffAuditRepository, {
-      now: () => signedInAt,
-    });
+    const service = staffService(staffAuditRepository);
 
     await service.signIn({
       staffAccountId: "staff-editor-1",
@@ -86,7 +83,7 @@ describe("staff session window", () => {
 describe("staff audit log paging", () => {
   it("asks for a sane page whatever the caller asked for", async () => {
     const asked: number[] = [];
-    const service = new StaffService(directory, recordingRepository(asked));
+    const service = staffService(recordingRepository(asked));
 
     for (const limit of [undefined, 0, -5, 3.7, 10, 10_000]) {
       await service.readAuditLog({
@@ -105,6 +102,20 @@ describe("staff audit log paging", () => {
     ]);
   });
 });
+
+function staffService(
+  staffAuditRepository: StaffAuditRepository,
+  options: { sessionDurationMs?: number } = {},
+): StaffService {
+  return new StaffService(
+    directory,
+    new StaffOperationGate(directory, staffAuditRepository, {
+      now: () => signedInAt,
+    }),
+    staffAuditRepository,
+    { now: () => signedInAt, ...options },
+  );
+}
 
 function editorSession(): StaffPrincipal {
   return createStaffPrincipal({

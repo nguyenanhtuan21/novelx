@@ -28,6 +28,7 @@ import {
   STAFF_AUDIT_REPOSITORY,
   type StaffAuditRepository,
 } from "./staff-audit.repository.js";
+import { StaffOperationGate } from "./staff-operation-gate.js";
 import { StaffController } from "./staff.controller.js";
 import { StaffService } from "./staff.service.js";
 
@@ -79,12 +80,25 @@ import { StaffService } from "./staff.service.js";
           : new InMemoryStaffAuditRepository(),
     },
     {
-      provide: StaffService,
+      provide: StaffOperationGate,
       useFactory: (
         staffAccounts: StaffAccountDirectory,
         staffAuditRepository: StaffAuditRepository,
-      ) => new StaffService(staffAccounts, staffAuditRepository),
+      ) => new StaffOperationGate(staffAccounts, staffAuditRepository),
       inject: [STAFF_ACCOUNT_DIRECTORY, STAFF_AUDIT_REPOSITORY],
+    },
+    {
+      provide: StaffService,
+      useFactory: (
+        staffAccounts: StaffAccountDirectory,
+        gate: StaffOperationGate,
+        staffAuditRepository: StaffAuditRepository,
+      ) => new StaffService(staffAccounts, gate, staffAuditRepository),
+      inject: [
+        STAFF_ACCOUNT_DIRECTORY,
+        StaffOperationGate,
+        STAFF_AUDIT_REPOSITORY,
+      ],
     },
   ],
 })
