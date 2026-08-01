@@ -109,6 +109,9 @@ create table if not exists staff_audit_records (
   action text not null,
   target text not null,
   outcome text not null check (outcome in ('allowed', 'denied')),
+  -- Why the operator said they did it, for operations that are only accountable
+  -- when explained. This is what keeps a change to locked Canon non-silent.
+  reason text,
   recorded_at timestamptz not null
 );
 

@@ -49,6 +49,20 @@ describe("Series metadata", () => {
     );
   });
 
+  it("refuses an update that drops a governed dimension instead of emptying it", () => {
+    const { contentWarnings, ...withoutWarnings } = taxonomy;
+    assert.deepEqual(contentWarnings, ["violence"]);
+
+    assert.throws(
+      () =>
+        updateSeries({
+          series: governedSeries(),
+          changes: { taxonomy: withoutWarnings as ManagedTaxonomy },
+        }),
+      /Managed Taxonomy needs contentWarnings as a list of governed values/,
+    );
+  });
+
   it("does not mutate the Series it was given", () => {
     const before = governedSeries();
 

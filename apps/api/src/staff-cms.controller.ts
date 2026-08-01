@@ -12,19 +12,13 @@ import type {
   CanonEntry,
   CreativeDisclosure,
   ManagedTaxonomy,
-  RequestPrincipal,
   Series,
 } from "@novelx/shared";
 
-import {
-  namedReaderPrincipal,
-  readerSessionSecret,
-} from "./reader-principal.js";
 import { StaffCmsService } from "./staff-cms.service.js";
 import {
   STAFF_SESSION_HEADER,
-  staffRequestPrincipal,
-  staffSessionSecret,
+  staffBoundaryPrincipal,
 } from "./staff-principal.js";
 
 type SeriesBody = {
@@ -68,7 +62,7 @@ export class StaffCmsController {
     @Headers("authorization") authorization?: string,
   ) {
     return this.staffCms.createSeries({
-      principal: this.principal(staffAuthorization, authorization),
+      principal: staffBoundaryPrincipal({ staffAuthorization, authorization }),
       series: body,
     });
   }
@@ -80,7 +74,7 @@ export class StaffCmsController {
     @Headers("authorization") authorization?: string,
   ) {
     return this.staffCms.readSeries({
-      principal: this.principal(staffAuthorization, authorization),
+      principal: staffBoundaryPrincipal({ staffAuthorization, authorization }),
       seriesId,
     });
   }
@@ -93,7 +87,7 @@ export class StaffCmsController {
     @Headers("authorization") authorization?: string,
   ) {
     return this.staffCms.updateSeries({
-      principal: this.principal(staffAuthorization, authorization),
+      principal: staffBoundaryPrincipal({ staffAuthorization, authorization }),
       seriesId,
       changes: body,
     });
@@ -107,7 +101,7 @@ export class StaffCmsController {
     @Headers("authorization") authorization?: string,
   ) {
     return this.staffCms.amendStoryBible({
-      principal: this.principal(staffAuthorization, authorization),
+      principal: staffBoundaryPrincipal({ staffAuthorization, authorization }),
       seriesId,
       canon: body?.canon,
       ...(body?.reason === undefined ? {} : { reason: body.reason }),
@@ -121,7 +115,7 @@ export class StaffCmsController {
     @Headers("authorization") authorization?: string,
   ) {
     return this.staffCms.lockStoryBible({
-      principal: this.principal(staffAuthorization, authorization),
+      principal: staffBoundaryPrincipal({ staffAuthorization, authorization }),
       seriesId,
     });
   }
@@ -134,26 +128,9 @@ export class StaffCmsController {
     @Headers("authorization") authorization?: string,
   ) {
     return this.staffCms.authorChapterDraft({
-      principal: this.principal(staffAuthorization, authorization),
+      principal: staffBoundaryPrincipal({ staffAuthorization, authorization }),
       seriesId,
       draft: body,
     });
-  }
-
-  private principal(
-    staffAuthorization: string | undefined,
-    authorization: string | undefined,
-  ): RequestPrincipal {
-    return (
-      staffRequestPrincipal({
-        staffAuthorization,
-        secret: staffSessionSecret(),
-        now: new Date().toISOString(),
-      }) ??
-      namedReaderPrincipal({
-        authorization,
-        secret: readerSessionSecret(),
-      })
-    );
   }
 }

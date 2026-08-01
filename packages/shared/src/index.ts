@@ -263,13 +263,23 @@ export function amendCanon(input: {
   });
 }
 
-/** Puts a Story Bible into production use, naming the human accountable for it. */
+/**
+ * Puts a Story Bible into production use, naming the human accountable for it.
+ *
+ * Locking an already-locked Story Bible changes nothing. The lock records who
+ * first took production use on, so a second lock must not quietly move that
+ * accountability to whoever pressed the button most recently.
+ */
 export function lockStoryBible(input: {
   storyBible: StoryBible;
   actor: RequestPrincipal;
   lockedAt: string;
 }): StoryBible {
   assertStaffMayWriteCanon(input.actor);
+
+  if (input.storyBible.lock) {
+    return input.storyBible;
+  }
 
   return Object.freeze({
     ...input.storyBible,
@@ -536,12 +546,22 @@ export type StaffAuditActor =
  * did, what they did it to, whether the boundary let them, and when. Refused
  * attempts are recorded too, so a reader probing the staff boundary leaves
  * evidence rather than silence.
+ *
+ * `outcome` is the boundary's decision on the attempt, not the result of the
+ * work: `allowed` says this actor was permitted to try, which is what makes a
+ * `denied` record meaningful.
  */
 export type StaffAuditRecord = Readonly<{
   actor: StaffAuditActor;
   action: string;
   target: string;
   outcome: "allowed" | "denied";
+  /**
+   * Why the operation was performed, for the operations that are only
+   * accountable when explained — changing locked Canon above all. Recording it
+   * here is what stops such a change from being silent after the fact.
+   */
+  reason?: string;
   recordedAt: string;
 }>;
 
@@ -572,6 +592,7 @@ export function createStaffAuditRecord(input: {
   action: string;
   target: string;
   outcome: StaffAuditRecord["outcome"];
+  reason?: string;
   recordedAt: string;
 }): StaffAuditRecord {
   if (!input.action.trim() || !input.target.trim()) {
@@ -582,6 +603,7 @@ export function createStaffAuditRecord(input: {
     actor: input.actor,
     action: input.action,
     target: input.target,
+    ...(input.reason?.trim() ? { reason: input.reason } : {}),
     outcome: input.outcome,
     recordedAt: input.recordedAt,
   });
@@ -837,13 +859,33 @@ export function grantEntitlement(
 
 function validateManagedTaxonomy(taxonomy: ManagedTaxonomy): void {
   if (
-    !taxonomy.genre.trim() ||
-    !taxonomy.subgenre.trim() ||
-    !taxonomy.audience.trim() ||
-    !taxonomy.ageRating.trim()
+    !taxonomy?.genre?.trim() ||
+    !taxonomy.subgenre?.trim() ||
+    !taxonomy.audience?.trim() ||
+    !taxonomy.ageRating?.trim()
   ) {
     throw new Error(
       "Managed Taxonomy requires genre, subgenre, audience, and age rating",
     );
+  }
+
+  // Every governed dimension has to arrive, even when it arrives empty. A
+  // taxonomy that simply omits contentWarnings would take the warnings off a
+  // Series a reader is about to open, which is the one dimension where a
+  // silently missing value is a safety problem rather than a metadata gap.
+  for (const dimension of [
+    "tropes",
+    "moods",
+    "themes",
+    "contentWarnings",
+  ] as const) {
+    if (
+      !Array.isArray(taxonomy[dimension]) ||
+      taxonomy[dimension].some((value) => typeof value !== "string")
+    ) {
+      throw new Error(
+        `Managed Taxonomy needs ${dimension} as a list of governed values, even when empty`,
+      );
+    }
   }
 }

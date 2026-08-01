@@ -7,16 +7,10 @@ import {
   Post,
   Query,
 } from "@nestjs/common";
-import type { RequestPrincipal } from "@novelx/shared";
 
 import {
-  namedReaderPrincipal,
-  readerSessionSecret,
-} from "./reader-principal.js";
-import {
   STAFF_SESSION_HEADER,
-  staffRequestPrincipal,
-  staffSessionSecret,
+  staffBoundaryPrincipal,
 } from "./staff-principal.js";
 import { StaffService } from "./staff.service.js";
 
@@ -40,7 +34,7 @@ export class StaffController {
     return this.staffService.signIn({
       staffAccountId: body?.staffAccountId,
       credential: body?.credential,
-      presented: this.principal(staffAuthorization, authorization),
+      presented: staffBoundaryPrincipal({ staffAuthorization, authorization }),
     });
   }
 
@@ -50,7 +44,7 @@ export class StaffController {
     @Headers("authorization") authorization?: string,
   ) {
     return this.staffService.currentSession({
-      principal: this.principal(staffAuthorization, authorization),
+      principal: staffBoundaryPrincipal({ staffAuthorization, authorization }),
     });
   }
 
@@ -61,30 +55,8 @@ export class StaffController {
     @Headers("authorization") authorization?: string,
   ) {
     return this.staffService.readAuditLog({
-      principal: this.principal(staffAuthorization, authorization),
+      principal: staffBoundaryPrincipal({ staffAuthorization, authorization }),
       ...(limit ? { limit: Number(limit) } : {}),
     });
-  }
-
-  /**
-   * Names whoever the request presented. Only the staff header can produce a
-   * Staff Account; a reader session token is resolved solely so that a refused
-   * attempt is audited as the reader session it came from.
-   */
-  private principal(
-    staffAuthorization: string | undefined,
-    authorization: string | undefined,
-  ): RequestPrincipal {
-    return (
-      staffRequestPrincipal({
-        staffAuthorization,
-        secret: staffSessionSecret(),
-        now: new Date().toISOString(),
-      }) ??
-      namedReaderPrincipal({
-        authorization,
-        secret: readerSessionSecret(),
-      })
-    );
   }
 }

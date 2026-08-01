@@ -109,6 +109,21 @@ describe("locked Canon", () => {
     assert.deepEqual(amended.lock, lockedStoryBible().lock);
   });
 
+  it("keeps the human who first took production use on, when locked again", () => {
+    const first = lockedStoryBible();
+
+    const relocked = lockStoryBible({
+      storyBible: first,
+      actor: createStaffPrincipal({
+        staffAccountId: "staff-editor-2",
+        permissions: ["canon:write"],
+      }),
+      lockedAt: "2026-08-02T09:00:00.000Z",
+    });
+
+    assert.deepEqual(relocked.lock, first.lock);
+  });
+
   it("refuses a reason that is only whitespace", () => {
     assert.throws(
       () =>

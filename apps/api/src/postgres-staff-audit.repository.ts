@@ -8,6 +8,7 @@ type StaffAuditRow = {
   action: string;
   target: string;
   outcome: StaffAuditRecord["outcome"];
+  reason: string | null;
   recorded_at: Date;
 };
 
@@ -21,13 +22,14 @@ export class PostgresStaffAuditRepository implements StaffAuditRepository {
   async record(record: StaffAuditRecord): Promise<void> {
     await this.pool.query(
       `insert into staff_audit_records
-         (actor, action, target, outcome, recorded_at)
-       values ($1, $2, $3, $4, $5)`,
+         (actor, action, target, outcome, reason, recorded_at)
+       values ($1, $2, $3, $4, $5, $6)`,
       [
         JSON.stringify(record.actor),
         record.action,
         record.target,
         record.outcome,
+        record.reason ?? null,
         record.recordedAt,
       ],
     );
@@ -35,7 +37,7 @@ export class PostgresStaffAuditRepository implements StaffAuditRepository {
 
   async list(input: { limit: number }): Promise<StaffAuditRecord[]> {
     const records = await this.pool.query<StaffAuditRow>(
-      `select actor, action, target, outcome, recorded_at
+      `select actor, action, target, outcome, reason, recorded_at
          from staff_audit_records
         order by recorded_at desc, id desc
         limit $1`,
@@ -48,6 +50,7 @@ export class PostgresStaffAuditRepository implements StaffAuditRepository {
         action: row.action,
         target: row.target,
         outcome: row.outcome,
+        ...(row.reason ? { reason: row.reason } : {}),
         recordedAt: row.recorded_at.toISOString(),
       }),
     );

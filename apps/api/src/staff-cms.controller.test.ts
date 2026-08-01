@@ -134,6 +134,45 @@ describe("governed Series in the staff CMS", () => {
     });
   });
 
+  /**
+   * An update replaces the taxonomy rather than merging into it, so a body that
+   * simply leaves contentWarnings out would take the warnings off a Series a
+   * reader is about to open. That has to be refused, not accepted as empty.
+   */
+  it("refuses an update whose taxonomy drops the content warnings", async () => {
+    await withApi(async (api) => {
+      const headers = await editorHeaders(api);
+      await api("POST", "/staff/series", { headers, body: seriesBody });
+
+      const refused = await api<{ message: string }>(
+        "PUT",
+        "/staff/series/series-cms-1",
+        {
+          headers,
+          body: {
+            taxonomy: {
+              genre: "fantasy",
+              subgenre: "kiem-hiep",
+              audience: "young-adult",
+              ageRating: "13+",
+            },
+          },
+        },
+      );
+      assert.equal(refused.status, 400);
+      assert.match(refused.body.message, /needs tropes as a list/);
+
+      const unchanged = await api<CmsSeriesView>(
+        "GET",
+        "/staff/series/series-cms-1",
+        { headers },
+      );
+      assert.deepEqual(unchanged.body.series.taxonomy.contentWarnings, [
+        "violence",
+      ]);
+    });
+  });
+
   it("refuses a second Series claiming an id the CMS already holds", async () => {
     await withApi(async (api) => {
       const headers = await editorHeaders(api);
@@ -241,6 +280,54 @@ describe("Story Bible and Canon in the staff CMS", () => {
         { id: "world-rule-1", statement: "Cultivation costs years." },
       ]);
       assert.equal(amended.body.lock?.staffAccountId, "staff-editor-1");
+    });
+  });
+
+  it("keeps the reason for a locked-Canon change in the audit trail", async () => {
+    await withApi(async (api) => {
+      const headers = await editorHeaders(api);
+      await lockedSeries(api, headers);
+      const reason = "Retcon approved by the series editorial owner";
+
+      await api("PUT", "/staff/series/series-cms-1/story-bible", {
+        headers,
+        body: {
+          canon: [
+            { id: "world-rule-1", statement: "Cultivation costs years." },
+          ],
+          reason,
+        },
+      });
+
+      const records = await staffAuditLog(api, headers);
+      const explained = records.filter((record) => record.reason);
+
+      assert.deepEqual(
+        explained.map((record) => [record.action, record.reason]),
+        [["staff.story-bible.amend", reason]],
+      );
+    });
+  });
+
+  it("refuses a body that leaves canon out rather than emptying the Story Bible", async () => {
+    await withApi(async (api) => {
+      const headers = await editorHeaders(api);
+      await lockedSeries(api, headers);
+
+      const omitted = await api<{ message: string }>(
+        "PUT",
+        "/staff/series/series-cms-1/story-bible",
+        { headers, body: { reason: "housekeeping" } },
+      );
+      assert.equal(omitted.status, 400);
+      assert.match(omitted.body.message, /requires canon as a list of entries/);
+
+      const unchanged = await api<CmsSeriesView>(
+        "GET",
+        "/staff/series/series-cms-1",
+        { headers },
+      );
+      assert.deepEqual(unchanged.body.storyBible?.canon, canon);
     });
   });
 

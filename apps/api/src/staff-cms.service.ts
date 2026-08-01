@@ -110,10 +110,7 @@ export class StaffCmsService {
   }): Promise<CmsSeriesView> {
     return this.gate.run(
       input.principal,
-      {
-        ...this.seriesOperation("read", input.seriesId),
-        permission: "series:read",
-      },
+      this.seriesOperation("read", input.seriesId),
       async () => {
         const series = await this.requireSeries(input.seriesId);
         const [storyBible, chapterDrafts] = await Promise.all([
@@ -141,8 +138,19 @@ export class StaffCmsService {
   }): Promise<StoryBible> {
     return this.gate.run(
       input.principal,
-      this.storyBibleOperation("amend", input.seriesId),
+      {
+        ...this.storyBibleOperation("amend", input.seriesId),
+        ...(input.reason === undefined ? {} : { reason: input.reason }),
+      },
       async (actor) => {
+        // A body that simply omits canon must not be read as "make it empty":
+        // that would erase a Series canon by leaving a field out.
+        if (!Array.isArray(input.canon)) {
+          throw new BadRequestException(
+            "amending a Story Bible requires canon as a list of entries; send [] to clear it",
+          );
+        }
+
         const series = await this.requireSeries(input.seriesId);
         const existing = await this.staffCmsRepository.findStoryBible(
           series.id,
@@ -152,7 +160,7 @@ export class StaffCmsService {
           amendCanon({
             storyBible:
               existing ?? createStoryBible({ seriesId: series.id, actor }),
-            canon: input.canon ?? [],
+            canon: input.canon,
             actor,
             ...(input.reason === undefined ? {} : { reason: input.reason }),
           }),
@@ -184,11 +192,9 @@ export class StaffCmsService {
           );
         }
 
-        const locked = lockStoryBible({
-          storyBible,
-          actor,
-          lockedAt: this.now(),
-        });
+        const locked = domainRule(() =>
+          lockStoryBible({ storyBible, actor, lockedAt: this.now() }),
+        );
         await this.staffCmsRepository.saveStoryBible(locked);
 
         return locked;
@@ -259,16 +265,19 @@ export class StaffCmsService {
     return series;
   }
 
-  private seriesOperation(action: string, seriesId: unknown): StaffOperation {
+  private seriesOperation(
+    action: "create" | "update" | "read",
+    seriesId: unknown,
+  ): StaffOperation {
     return {
       action: `staff.series.${action}`,
       target: staffAuditTarget("series", seriesId),
-      permission: "series:write",
+      permission: action === "read" ? "series:read" : "series:write",
     };
   }
 
   private storyBibleOperation(
-    action: string,
+    action: "amend" | "lock",
     seriesId: unknown,
   ): StaffOperation {
     return {

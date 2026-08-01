@@ -44,6 +44,12 @@ export type StaffOperation = {
   target: string;
   /** Omitted for operations any Staff Account may perform on itself. */
   permission?: string;
+  /**
+   * Why the operator says they are doing it, for operations that are only
+   * accountable when explained. It travels into the audit record, which is what
+   * keeps a change to locked Canon from being silent after the fact.
+   */
+  reason?: string;
 };
 
 /**
@@ -70,6 +76,13 @@ export class StaffOperationGate {
   /**
    * Authorizes a staff operation and records that it was allowed before the
    * work runs, so an operation cannot complete without leaving its own trace.
+   *
+   * The record therefore says the boundary allowed the attempt, not that the
+   * work succeeded: an operation that then fails its own rules — a duplicate
+   * id, an unknown Series — leaves an `allowed` record for an attempt that
+   * changed nothing. Recording an attempt that was permitted is the property
+   * worth keeping; distinguishing its result needs an outcome vocabulary wider
+   * than allowed/denied, which ADR-0013 does not yet have.
    */
   async run<T>(
     presented: RequestPrincipal,
@@ -137,6 +150,7 @@ export class StaffOperationGate {
         action: operation.action,
         target: operation.target,
         outcome,
+        ...(operation.reason === undefined ? {} : { reason: operation.reason }),
         recordedAt: this.now(),
       }),
     );
