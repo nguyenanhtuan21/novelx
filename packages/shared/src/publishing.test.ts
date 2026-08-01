@@ -15,7 +15,11 @@ import {
   recordAnonymousProgress,
   revisePublishedChapter,
   upgradeAnonymousProgress,
+  type ChapterDraft,
+  type CreativeDisclosure,
+  type ReportedQualityCheck,
 } from "./index.js";
+import { passedQualityGate, reportedChecks } from "./quality-gate.fixture.js";
 
 describe("publish/read workflow", () => {
   it("requires rights, provenance, quality gate, and human approval before public reading", () => {
@@ -35,28 +39,11 @@ describe("publish/read workflow", () => {
         contentWarnings: ["violence"],
       },
     });
-    const draft = createChapterDraft({
+    const draft = createApprovedDraft({
       id: "chapter-1",
       seriesId: series.id,
-      chapterNumber: 1,
-      title: "Mui Mua Dau Tien",
       body: "Chapter body long enough for a reader-facing snapshot.",
       creativeDisclosure: "Hybrid",
-      rightsRecordId: "rights-1",
-      provenanceLedgerEntryId: "prov-1",
-      qualityGate: {
-        canonContinuity: "pass",
-        policySafety: "pass",
-        originalityIp: "pass",
-        metadata: "pass",
-        rightsRecord: "pass",
-        provenanceLedger: "pass",
-        humanApproval: "pass",
-      },
-      humanApproval: {
-        reviewerStaffAccountId: "staff-editor-1",
-        approvedAt: "2026-07-31T00:00:00.000Z",
-      },
     });
 
     const snapshot = publishChapter({
@@ -91,28 +78,16 @@ describe("publish/read workflow", () => {
         contentWarnings: [],
       },
     });
-    const draft = createChapterDraft({
+    const draft = createApprovedDraft({
       id: "chapter-1",
       seriesId: series.id,
-      chapterNumber: 1,
-      title: "Mui Mua Dau Tien",
       body: "Chapter body long enough for a reader-facing snapshot.",
       creativeDisclosure: "AI-Assisted",
-      rightsRecordId: "rights-1",
-      provenanceLedgerEntryId: "prov-1",
-      qualityGate: {
-        canonContinuity: "pass",
-        policySafety: "blocking-failure",
-        originalityIp: "pass",
-        metadata: "pass",
-        rightsRecord: "pass",
-        provenanceLedger: "pass",
-        humanApproval: "pass",
-      },
-      humanApproval: {
-        reviewerStaffAccountId: "staff-editor-1",
-        approvedAt: "2026-07-31T00:00:00.000Z",
-      },
+      reportedChecks: reportedChecks.map((check) =>
+        check.condition === "policySafety"
+          ? { ...check, verdict: "blocking-failure" as const }
+          : check,
+      ),
     });
 
     assert.throws(
@@ -130,26 +105,19 @@ describe("publish/read workflow", () => {
   });
 
   it("rejects draft workflow entry without rights and provenance records", () => {
+    const draft = plainDraft({
+      id: "chapter-1",
+      seriesId: "series-1",
+      body: "Draft text.",
+      creativeDisclosure: "Human",
+    });
+
     assert.throws(
       () =>
         createChapterDraft({
-          id: "chapter-1",
-          seriesId: "series-1",
-          chapterNumber: 1,
-          title: "Mui Mua Dau Tien",
-          body: "Draft text.",
-          creativeDisclosure: "Human",
+          ...draft,
           rightsRecordId: "",
-          provenanceLedgerEntryId: "prov-1",
-          qualityGate: {
-            canonContinuity: "pass",
-            policySafety: "pass",
-            originalityIp: "pass",
-            metadata: "pass",
-            rightsRecord: "pass",
-            provenanceLedger: "pass",
-            humanApproval: "pass",
-          },
+          qualityGate: passedQualityGate(draft),
         }),
       /Rights Record is required before draft workflow entry/,
     );
@@ -339,32 +307,45 @@ describe("entitlement boundary", () => {
   });
 });
 
-function createApprovedDraft(input: {
+type DraftFixture = {
   id: string;
   seriesId: string;
   body: string;
-}) {
-  return createChapterDraft({
+  creativeDisclosure?: CreativeDisclosure;
+};
+
+/** A draft carrying everything the Quality Gate reads off the record. */
+function plainDraft(input: DraftFixture): ChapterDraft {
+  return {
     id: input.id,
     seriesId: input.seriesId,
     chapterNumber: 1,
     title: "Mui Mua Dau Tien",
     body: input.body,
-    creativeDisclosure: "Human",
+    creativeDisclosure: input.creativeDisclosure ?? "Human",
     rightsRecordId: "rights-1",
     provenanceLedgerEntryId: "prov-1",
-    qualityGate: {
-      canonContinuity: "pass",
-      policySafety: "pass",
-      originalityIp: "pass",
-      metadata: "pass",
-      rightsRecord: "pass",
-      provenanceLedger: "pass",
-      humanApproval: "pass",
-    },
     humanApproval: {
       reviewerStaffAccountId: "staff-editor-1",
       approvedAt: "2026-07-31T00:00:00.000Z",
     },
+  };
+}
+
+/**
+ * A draft that has been through the Quality Gate, which is the only way to hold
+ * a gate result: publishing reads what the gate concluded, never a claim about it.
+ */
+function createApprovedDraft(
+  input: DraftFixture & { reportedChecks?: readonly ReportedQualityCheck[] },
+) {
+  const draft = plainDraft(input);
+
+  return createChapterDraft({
+    ...draft,
+    rightsRecordId: "rights-1",
+    qualityGate: passedQualityGate(draft, {
+      ...(input.reportedChecks ? { reportedChecks: input.reportedChecks } : {}),
+    }),
   });
 }

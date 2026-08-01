@@ -1,8 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import {
   PROVENANCE_TARGET_KINDS,
   type ProvenanceEntry,
@@ -10,6 +6,7 @@ import {
   type RequestPrincipal,
 } from "@novelx/shared";
 
+import { requireSeries } from "./governed-content.js";
 import { pageSize } from "./page-size.js";
 import type { ProvenanceRepository } from "./provenance.repository.js";
 import type { StaffCmsRepository } from "./staff-cms.repository.js";
@@ -56,7 +53,7 @@ export class StaffProvenanceService {
         permission: "provenance:read",
       },
       async () => {
-        await this.requireSeries(input.seriesId);
+        await requireSeries(this.staffCmsRepository, input.seriesId);
 
         return {
           entries: await this.provenanceRepository.listForSeries({
@@ -94,7 +91,7 @@ export class StaffProvenanceService {
           );
         }
 
-        await this.requireSeries(input.seriesId);
+        await requireSeries(this.staffCmsRepository, input.seriesId);
 
         return {
           entries: await this.provenanceRepository.listForTarget({
@@ -104,16 +101,6 @@ export class StaffProvenanceService {
         };
       },
     );
-  }
-
-  /**
-   * Lineage is read under the Series that holds it, so an unknown Series is
-   * answered as unknown rather than as a Series nothing ever happened to.
-   */
-  private async requireSeries(seriesId: string): Promise<void> {
-    if (!(await this.staffCmsRepository.findSeries(seriesId))) {
-      throw new NotFoundException(`the CMS holds no Series called ${seriesId}`);
-    }
   }
 }
 

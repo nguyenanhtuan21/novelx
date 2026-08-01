@@ -25,6 +25,7 @@ import {
 } from "@novelx/shared";
 
 import { domainRule } from "./domain-rule.js";
+import { requireChapterDraft, requireSeries } from "./governed-content.js";
 import { ProvenanceRecorder } from "./provenance-recorder.js";
 import { RightsClearance } from "./rights-clearance.js";
 import {
@@ -110,7 +111,10 @@ export class StaffCmsService {
       input.principal,
       this.seriesOperation("update", input.seriesId),
       async (actor) => {
-        const series = await this.requireSeries(input.seriesId);
+        const series = await requireSeries(
+          this.staffCmsRepository,
+          input.seriesId,
+        );
         const updated = domainRule(() =>
           updateSeries({ series, changes: input.changes ?? {} }),
         );
@@ -135,7 +139,10 @@ export class StaffCmsService {
       input.principal,
       this.seriesOperation("read", input.seriesId),
       async () => {
-        const series = await this.requireSeries(input.seriesId);
+        const series = await requireSeries(
+          this.staffCmsRepository,
+          input.seriesId,
+        );
         const [storyBible, chapterDrafts] = await Promise.all([
           this.staffCmsRepository.findStoryBible(series.id),
           this.staffCmsRepository.listChapterDrafts(series.id),
@@ -174,7 +181,10 @@ export class StaffCmsService {
           );
         }
 
-        const series = await this.requireSeries(input.seriesId);
+        const series = await requireSeries(
+          this.staffCmsRepository,
+          input.seriesId,
+        );
         const existing = await this.staffCmsRepository.findStoryBible(
           series.id,
         );
@@ -209,7 +219,10 @@ export class StaffCmsService {
       input.principal,
       this.storyBibleOperation("lock", input.seriesId),
       async (actor) => {
-        const series = await this.requireSeries(input.seriesId);
+        const series = await requireSeries(
+          this.staffCmsRepository,
+          input.seriesId,
+        );
         const storyBible = await this.staffCmsRepository.findStoryBible(
           series.id,
         );
@@ -260,7 +273,10 @@ export class StaffCmsService {
         permission: "chapter:write",
       },
       async (actor) => {
-        const series = await this.requireSeries(input.seriesId);
+        const series = await requireSeries(
+          this.staffCmsRepository,
+          input.seriesId,
+        );
         const draft = domainRule(() =>
           authorChapterDraft({ ...input.draft, series }),
         );
@@ -303,7 +319,7 @@ export class StaffCmsService {
         permission: "chapter:write",
       },
       async (actor) => {
-        const draft = await this.requireChapterDraft(input);
+        const draft = await requireChapterDraft(this.staffCmsRepository, input);
         const attachment = await this.rightsClearance.clear(input);
 
         const attached = domainRule(() =>
@@ -319,24 +335,6 @@ export class StaffCmsService {
         return attached;
       },
     );
-  }
-
-  private async requireChapterDraft(input: {
-    seriesId: string;
-    chapterId: string;
-  }): Promise<ChapterDraft> {
-    const series = await this.requireSeries(input.seriesId);
-    const draft = await this.staffCmsRepository.findChapterDraft(
-      input.chapterId,
-    );
-
-    if (!draft || draft.seriesId !== series.id) {
-      throw new NotFoundException(
-        `Series ${series.id} holds no draft Chapter called ${input.chapterId}`,
-      );
-    }
-
-    return draft;
   }
 
   /**
@@ -358,16 +356,6 @@ export class StaffCmsService {
         `Series ${draft.seriesId} already holds a draft Chapter ${clash.chapterNumber} (${clash.id})`,
       );
     }
-  }
-
-  private async requireSeries(seriesId: string): Promise<Series> {
-    const series = await this.staffCmsRepository.findSeries(seriesId);
-
-    if (!series) {
-      throw new NotFoundException(`the CMS holds no Series called ${seriesId}`);
-    }
-
-    return series;
   }
 
   private seriesOperation(

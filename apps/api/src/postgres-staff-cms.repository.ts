@@ -4,7 +4,7 @@ import type {
   ChapterDraft,
   CreativeDisclosure,
   ManagedTaxonomy,
-  QualityGate,
+  QualityGateResult,
   Series,
   StoryBible,
   WorkflowMaterialAttachment,
@@ -38,7 +38,7 @@ type ChapterDraftRow = {
   workflow_materials: WorkflowMaterialAttachment[] | null;
   rights_record_id: string | null;
   provenance_ledger_entry_id: string | null;
-  quality_gate: QualityGate | null;
+  quality_gate: QualityGateResult | null;
   human_approval: ChapterDraft["humanApproval"] | null;
 };
 
