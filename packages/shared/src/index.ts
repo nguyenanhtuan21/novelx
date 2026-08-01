@@ -1,16 +1,101 @@
 export type CreativeDisclosure = "Human" | "Hybrid" | "AI-Assisted";
 
-export type QualityGateCondition = "pass" | "warning" | "blocking-failure";
+/**
+ * How one Quality Gate condition came out. Only a blocking failure blocks: a
+ * warning is something an editor should read, not something that stops a
+ * chapter, and neither is a score.
+ */
+export const QUALITY_GATE_VERDICTS = [
+  "pass",
+  "warning",
+  "blocking-failure",
+] as const;
 
-export type QualityGate = {
-  canonContinuity: QualityGateCondition;
-  policySafety: QualityGateCondition;
-  originalityIp: QualityGateCondition;
-  metadata: QualityGateCondition;
-  rightsRecord: QualityGateCondition;
-  provenanceLedger: QualityGateCondition;
-  humanApproval: QualityGateCondition;
-};
+export type QualityGateVerdict = (typeof QUALITY_GATE_VERDICTS)[number];
+
+/** The checks a chapter must pass before public publishing (ADR-0001). */
+export const QUALITY_GATE_CONDITIONS = [
+  "canonContinuity",
+  "policySafety",
+  "originalityIp",
+  "metadata",
+  "rightsRecord",
+  "provenanceLedger",
+  "humanApproval",
+] as const;
+
+export type QualityGateConditionName = (typeof QUALITY_GATE_CONDITIONS)[number];
+
+/**
+ * The conditions somebody has to report a check for. They are judgements about
+ * the prose — does it contradict Canon, is it safe, is it original, does its
+ * metadata describe it — and NovelX cannot reach them by reading its own
+ * records, so a run that reports none of them has checked none of them.
+ */
+export const REPORTED_QUALITY_GATE_CONDITIONS = [
+  "canonContinuity",
+  "policySafety",
+  "originalityIp",
+  "metadata",
+] as const;
+
+/**
+ * The conditions the record answers: the Rights Record covering the draft, the
+ * lineage the Provenance Ledger holds for it, and the reviewer who approved it.
+ * No reported check speaks for these, because believing a caller about them is
+ * exactly what the gate exists to stop.
+ */
+export const RECORDED_QUALITY_GATE_CONDITIONS = [
+  "rightsRecord",
+  "provenanceLedger",
+  "humanApproval",
+] as const;
+
+export type RecordedQualityGateCondition =
+  (typeof RECORDED_QUALITY_GATE_CONDITIONS)[number];
+
+export type ReportedQualityGateCondition =
+  (typeof REPORTED_QUALITY_GATE_CONDITIONS)[number];
+
+/** What a checker found for one condition, in the checker's own words. */
+export type ReportedQualityCheck = Readonly<{
+  condition: ReportedQualityGateCondition;
+  verdict: QualityGateVerdict;
+  /** How well it scored out of a hundred. Non-blocking: it decides nothing. */
+  score?: number;
+  note?: string;
+}>;
+
+/** The gate's answer for one condition, and why it answered that way. */
+export type QualityGateFinding = Readonly<{
+  condition: QualityGateConditionName;
+  verdict: QualityGateVerdict;
+  score?: number;
+  note?: string;
+}>;
+
+/**
+ * What one run of the Quality Gate concluded about a draft Chapter.
+ *
+ * Only `evaluateQualityGate` produces one, so a gate result cannot be written
+ * by whoever wants a chapter published. `publicPublishingReady` is read off
+ * `blockingFailures` and nothing else: `meanReportedScore` describes how the
+ * checks that were scored went, and can never make a blocked chapter ready.
+ */
+export type QualityGateResult = Readonly<{
+  chapterId: string;
+  /** One finding per condition, in the order the gate checks them. */
+  findings: readonly QualityGateFinding[];
+  blockingFailures: readonly QualityGateConditionName[];
+  /**
+   * The mean of the scores checkers reported, absent when none were. It says how
+   * the checks that were scored went, and is deliberately not a quality score
+   * for the chapter: nothing reads it to decide anything.
+   */
+  meanReportedScore?: number;
+  publicPublishingReady: boolean;
+  evaluatedAt: string;
+}>;
 
 export type ManagedTaxonomy = {
   genre: string;
@@ -211,7 +296,8 @@ export type ChapterDraft = {
   workflowMaterials?: readonly WorkflowMaterialAttachment[];
   rightsRecordId?: string;
   provenanceLedgerEntryId?: string;
-  qualityGate?: QualityGate;
+  /** What the Quality Gate concluded when it last ran, absent until it has. */
+  qualityGate?: QualityGateResult;
   humanApproval?: {
     reviewerStaffAccountId: string;
     approvedAt: string;
@@ -282,6 +368,15 @@ export type ProvenanceVersion =
       chapterNumber: number;
       /** The grants that cleared the material this draft's workflow carries. */
       rightsRecordIds: readonly string[];
+      /**
+       * What the Quality Gate concluded, once it has run. An evaluation that
+       * left no trace of its outcome would be indistinguishable from the next
+       * one, and the ledger exists to keep how content was evaluated.
+       */
+      qualityGate?: Readonly<{
+        blockingFailures: readonly QualityGateConditionName[];
+        publicPublishingReady: boolean;
+      }>;
     }
   | { kind: "published-snapshot"; chapterId: string; version: number };
 
@@ -817,9 +912,278 @@ function assertWithinRightsDuration(
   }
 }
 
+/**
+ * Runs the Quality Gate over a draft Chapter: the multi-condition check a
+ * chapter passes before it can be published publicly.
+ *
+ * Each condition is answered on its own and no condition outvotes another. Four
+ * of them are judgements about the prose, so they arrive as reported checks, and
+ * a condition nobody reported a check for is a blocking failure rather than a
+ * pass — a gate that accepted silence could be passed by sending nothing. The
+ * other three are read from the record: the grant covering the draft, the
+ * lineage the Provenance Ledger holds for it, and the reviewer who approved it.
+ *
+ * It asserts no permission of its own. Whether a draft passes is a fact about
+ * records and reported checks; who may run the gate is a separate question,
+ * asked at the staff boundary.
+ */
+export function evaluateQualityGate(input: {
+  draft: ChapterDraft;
+  /** The Rights Record the draft names, as the grants on record hold it. */
+  chapterRightsRecord?: RightsRecord;
+  /** The draft's lineage as the Provenance Ledger holds it, newest first. */
+  lineage: readonly ProvenanceEntry[];
+  reportedChecks: readonly ReportedQualityCheck[];
+  evaluatedAt: string;
+}): QualityGateResult {
+  const reported = readReportedChecks(input.reportedChecks);
+  const findings = QUALITY_GATE_CONDITIONS.map((condition) =>
+    Object.freeze(
+      isRecordedCondition(condition)
+        ? RECORDED_CONDITION_ANSWERS[condition](input)
+        : (reported.get(condition) ?? unreportedFinding(condition)),
+    ),
+  );
+  const scores = findings.flatMap((finding) =>
+    finding.score === undefined ? [] : [finding.score],
+  );
+
+  const blockingFailures = findings
+    .filter((finding) => finding.verdict === "blocking-failure")
+    .map((finding) => finding.condition);
+
+  return Object.freeze({
+    chapterId: input.draft.id,
+    findings: Object.freeze(findings),
+    blockingFailures: Object.freeze(blockingFailures),
+    ...(scores.length > 0
+      ? {
+          meanReportedScore: Math.round(
+            scores.reduce((total, score) => total + score, 0) / scores.length,
+          ),
+        }
+      : {}),
+    // Read off the blocking failures and nothing else, so no summing of scores
+    // can make a blocked chapter ready.
+    publicPublishingReady: blockingFailures.length === 0,
+    evaluatedAt: input.evaluatedAt,
+  });
+}
+
+/**
+ * Reads the checks a run reports, refusing what the gate cannot act on: a
+ * condition it does not have, a condition the record answers, a second verdict
+ * for a condition already answered, or a score that is not a share of a hundred.
+ */
+function readReportedChecks(
+  checks: readonly ReportedQualityCheck[],
+): Map<ReportedQualityGateCondition, QualityGateFinding> {
+  const reported = new Map<ReportedQualityGateCondition, QualityGateFinding>();
+
+  for (const check of checks) {
+    const condition = check?.condition;
+
+    if (isRecordedCondition(condition as QualityGateConditionName)) {
+      throw new Error(
+        `${condition} is answered by the record, not by a reported check`,
+      );
+    }
+
+    if (!REPORTED_QUALITY_GATE_CONDITIONS.includes(condition)) {
+      throw new Error(`the Quality Gate has no ${condition} condition`);
+    }
+
+    if (!QUALITY_GATE_VERDICTS.includes(check.verdict)) {
+      throw new Error(
+        `a reported check needs a verdict: ${QUALITY_GATE_VERDICTS.join(", ")}`,
+      );
+    }
+
+    if (
+      check.score !== undefined &&
+      (!Number.isFinite(check.score) || check.score < 0 || check.score > 100)
+    ) {
+      throw new Error(
+        "a reported score is a share of a hundred, or is left out",
+      );
+    }
+
+    if (reported.has(condition)) {
+      throw new Error(
+        `${condition} was checked twice: one condition, one verdict`,
+      );
+    }
+
+    reported.set(condition, {
+      condition,
+      verdict: check.verdict,
+      ...(check.score === undefined ? {} : { score: check.score }),
+      ...(check.note?.trim() ? { note: check.note } : {}),
+    });
+  }
+
+  return reported;
+}
+
+/** What the gate reads the recorded conditions off, gathered for one run. */
+type QualityGateRecords = Readonly<{
+  draft: ChapterDraft;
+  chapterRightsRecord?: RightsRecord;
+  lineage: readonly ProvenanceEntry[];
+}>;
+
+/**
+ * Where the gate reads each recorded condition.
+ *
+ * Keeping the answers in one map beside the vocabulary is what stops the two
+ * from drifting: a condition named as recorded has its answer here, and there
+ * is no fall-through that could quietly treat one as merely unreported.
+ */
+const RECORDED_CONDITION_ANSWERS = {
+  rightsRecord: rightsFinding,
+  provenanceLedger: provenanceFinding,
+  humanApproval: humanApprovalFinding,
+} satisfies Record<
+  RecordedQualityGateCondition,
+  (records: QualityGateRecords) => QualityGateFinding
+>;
+
+function isRecordedCondition(
+  condition: QualityGateConditionName,
+): condition is RecordedQualityGateCondition {
+  return RECORDED_QUALITY_GATE_CONDITIONS.includes(
+    condition as RecordedQualityGateCondition,
+  );
+}
+
+/** A condition nobody checked, which blocks rather than passing on silence. */
+function unreportedFinding(
+  condition: ReportedQualityGateCondition,
+): QualityGateFinding {
+  return {
+    condition,
+    verdict: "blocking-failure",
+    note: `no check was reported for ${condition}`,
+  };
+}
+
+/**
+ * Whether a grant covers publishing this draft Chapter.
+ *
+ * Material attached to the draft's workflow was cleared by the rights gate on
+ * the way in (ADR-0015), so its grants are checked facts — but only for the use
+ * they were cleared for, and material licensed for AI use says nothing about
+ * publishing it. A Rights Record the draft names for itself is not a checked
+ * fact at all: the gate resolves it against the grants on record and refuses an
+ * id nobody holds, or a grant that does not cover publishing.
+ */
+function rightsFinding(records: QualityGateRecords): QualityGateFinding {
+  const { draft, chapterRightsRecord } = records;
+  const condition = "rightsRecord" as const;
+  const cleared = (draft.workflowMaterials ?? [])
+    .filter((attachment) => attachment.use === "publishing")
+    .map((attachment) => attachment.rightsRecordId);
+  const named = draft.rightsRecordId?.trim();
+
+  if (named) {
+    if (chapterRightsRecord?.id !== named) {
+      return {
+        condition,
+        verdict: "blocking-failure",
+        note: `the draft Chapter names Rights Record ${named}, which is not held`,
+      };
+    }
+
+    if (!chapterRightsRecord.scope.includes("publishing")) {
+      return {
+        condition,
+        verdict: "blocking-failure",
+        note: `Rights Record ${named} does not cover publishing use`,
+      };
+    }
+  }
+
+  const grants = [...new Set([...(named ? [named] : []), ...cleared])];
+
+  return grants.length > 0
+    ? {
+        condition,
+        verdict: "pass",
+        note: `cleared for publishing by Rights Record ${grants.join(", ")}`,
+      }
+    : {
+        condition,
+        verdict: "blocking-failure",
+        note: "no Rights Record clears this draft Chapter for publishing",
+      };
+}
+
+/**
+ * Whether the Provenance Ledger can say how this draft Chapter was made. The
+ * lineage has to trace this draft under this Series: entries about some other
+ * artifact would answer the condition with another Chapter's history.
+ */
+function provenanceFinding(records: QualityGateRecords): QualityGateFinding {
+  const { draft } = records;
+  const condition = "provenanceLedger" as const;
+  const traced = records.lineage.find(
+    (entry) =>
+      entry.target.kind === "chapter-draft" &&
+      entry.target.id === draft.id &&
+      entry.target.seriesId === draft.seriesId,
+  );
+
+  return traced
+    ? {
+        condition,
+        verdict: "pass",
+        note: `traced by Provenance Ledger entry ${traced.id}`,
+      }
+    : {
+        condition,
+        verdict: "blocking-failure",
+        note: "the Provenance Ledger holds no lineage for this draft Chapter",
+      };
+}
+
+/** Whether an accountable human has approved the draft Chapter (ADR-0001). */
+function humanApprovalFinding(records: QualityGateRecords): QualityGateFinding {
+  const condition = "humanApproval" as const;
+  const approval = records.draft.humanApproval;
+
+  return isHumanApproved(records.draft)
+    ? {
+        condition,
+        verdict: "pass",
+        note: `approved by ${approval?.reviewerStaffAccountId}`,
+      }
+    : {
+        condition,
+        verdict: "blocking-failure",
+        note: "no accountable reviewer has approved this draft Chapter",
+      };
+}
+
+/**
+ * Whether an approval names both the reviewer accountable for it and when they
+ * gave it. One rule in one place, because the Quality Gate and the publishing
+ * door both ask it and an approval that counted at one and not the other would
+ * be a gate the other could be talked past.
+ */
+function isHumanApproved(draft: ChapterDraft): boolean {
+  const approval = draft.humanApproval;
+
+  return Boolean(
+    approval?.reviewerStaffAccountId?.trim() && approval.approvedAt?.trim(),
+  );
+}
+
 /** Admits a draft to the workflow that carries it towards publishing. */
 export function createChapterDraft(
-  input: ChapterDraft & { rightsRecordId: string; qualityGate: QualityGate },
+  input: ChapterDraft & {
+    rightsRecordId: string;
+    qualityGate: QualityGateResult;
+  },
 ): ChapterDraft {
   if (!input.rightsRecordId.trim()) {
     throw new Error("Rights Record is required before draft workflow entry");
@@ -893,7 +1257,7 @@ export function revisePublishedChapter(input: {
 type PublishableChapterDraft = ChapterDraft & {
   rightsRecordId: string;
   provenanceLedgerEntryId: string;
-  qualityGate: QualityGate;
+  qualityGate: QualityGateResult;
 };
 
 function assertPublishableDraft(
@@ -915,17 +1279,15 @@ function assertPublishableDraft(
     );
   }
 
-  const blockingFailures = Object.entries(draft.qualityGate)
-    .filter(([, condition]) => condition === "blocking-failure")
-    .map(([name]) => name);
-
-  if (blockingFailures.length > 0) {
+  if (draft.qualityGate.blockingFailures.length > 0) {
     throw new Error(
-      `blocking Quality Gate failure: ${blockingFailures.join(", ")}`,
+      `blocking Quality Gate failure: ${draft.qualityGate.blockingFailures.join(", ")}`,
     );
   }
 
-  if (!draft.humanApproval || draft.qualityGate.humanApproval !== "pass") {
+  // The approval itself, not the gate's account of it: a gate result says what
+  // was on record when it ran, and an approval is what publishing needs now.
+  if (!isHumanApproved(draft)) {
     throw new Error("Human Approval is required before public publishing");
   }
 }
@@ -1005,6 +1367,14 @@ export function chapterDraftProvenance(draft: ChapterDraft): ProvenanceSubject {
       rightsRecordIds: (draft.workflowMaterials ?? []).map(
         (attachment) => attachment.rightsRecordId,
       ),
+      ...(draft.qualityGate
+        ? {
+            qualityGate: {
+              blockingFailures: draft.qualityGate.blockingFailures,
+              publicPublishingReady: draft.qualityGate.publicPublishingReady,
+            },
+          }
+        : {}),
     },
   );
 }

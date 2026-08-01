@@ -82,6 +82,36 @@ Mỗi thao tác nội dung thành công trong Staff CMS ghi thêm một provenan
 
 `targetKind` là một trong `series`, `story-bible`, `chapter-draft`, `published-snapshot`. Cả hai endpoint trả entry mới nhất trước, nhận `?limit=` với mặc định 50 và tối đa 500.
 
+## Quality Gate
+
+Quality Gate là tập kiểm tra một draft Chapter phải vượt qua trước khi publish công khai. Gate đa điều kiện: mỗi điều kiện được trả lời riêng, và điều kiện không ai kiểm tra là _blocking failure_ chứ không phải pass. Điểm số chỉ để đọc — điểm tổng hợp cao không bao giờ ghi đè được một blocking failure. Xem `docs/adr/0017-the-quality-gate-blocks-on-unanswered-conditions.md`.
+
+| Thao tác             | Endpoint                                                        | Permission             |
+| -------------------- | --------------------------------------------------------------- | ---------------------- |
+| Chạy Quality Gate    | `POST /staff/series/:seriesId/chapters/:chapterId/quality-gate` | `chapter:quality-gate` |
+| Xem kết quả gần nhất | `GET /staff/series/:seriesId/chapters/:chapterId/quality-gate`  | `series:read`          |
+
+Body của lần chạy nêu các kiểm tra đã thực hiện:
+
+```json
+{
+  "reportedChecks": [
+    { "condition": "canonContinuity", "verdict": "pass", "score": 96 },
+    { "condition": "policySafety", "verdict": "pass", "score": 99 },
+    { "condition": "originalityIp", "verdict": "pass", "score": 97 },
+    {
+      "condition": "metadata",
+      "verdict": "warning",
+      "note": "Thiếu trope phụ."
+    }
+  ]
+}
+```
+
+`condition` chỉ nhận bốn điều kiện là phán xét về nội dung: `canonContinuity`, `policySafety`, `originalityIp`, `metadata`. Ba điều kiện còn lại — `rightsRecord`, `provenanceLedger`, `humanApproval` — do bản ghi trả lời (Rights Record, lineage trong Provenance Ledger, phê duyệt của người review), nên gate từ chối `400` nếu request báo cáo thay cho chúng. `verdict` là `pass`, `warning`, hoặc `blocking-failure`.
+
+Mỗi lần chạy ghi thêm một provenance entry `chapter-draft.quality-gate` nêu kết luận của nó; đọc kết quả không ghi gì.
+
 ## Đường Dẫn Kiểm Tra Nhanh
 
 - Web: `GET /health` trả về `{ "service": "novelx-web", "status": "ok" }`.

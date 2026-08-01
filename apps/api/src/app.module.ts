@@ -52,6 +52,8 @@ import { StaffCmsService } from "./staff-cms.service.js";
 import { StaffOperationGate } from "./staff-operation-gate.js";
 import { StaffProvenanceController } from "./staff-provenance.controller.js";
 import { StaffProvenanceService } from "./staff-provenance.service.js";
+import { StaffQualityGateController } from "./staff-quality-gate.controller.js";
+import { StaffQualityGateService } from "./staff-quality-gate.service.js";
 import { StaffRightsController } from "./staff-rights.controller.js";
 import { StaffRightsService } from "./staff-rights.service.js";
 import { PostgresStaffCmsRepository } from "./postgres-staff-cms.repository.js";
@@ -66,6 +68,7 @@ import { StaffService } from "./staff.service.js";
     StaffCmsController,
     StaffController,
     StaffProvenanceController,
+    StaffQualityGateController,
     StaffRightsController,
   ],
   providers: [
@@ -196,6 +199,30 @@ import { StaffService } from "./staff.service.js";
           staffCmsRepository,
         ),
       inject: [StaffOperationGate, PROVENANCE_REPOSITORY, STAFF_CMS_REPOSITORY],
+    },
+    {
+      provide: StaffQualityGateService,
+      useFactory: (
+        gate: StaffOperationGate,
+        staffCmsRepository: StaffCmsRepository,
+        rightsRepository: RightsRepository,
+        provenanceRepository: ProvenanceRepository,
+        provenanceRecorder: ProvenanceRecorder,
+      ) =>
+        new StaffQualityGateService(
+          gate,
+          staffCmsRepository,
+          rightsRepository,
+          provenanceRepository,
+          provenanceRecorder,
+        ),
+      inject: [
+        StaffOperationGate,
+        STAFF_CMS_REPOSITORY,
+        RIGHTS_REPOSITORY,
+        PROVENANCE_REPOSITORY,
+        ProvenanceRecorder,
+      ],
     },
     {
       provide: StaffRightsService,

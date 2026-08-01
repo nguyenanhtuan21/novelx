@@ -61,8 +61,12 @@ The immutable public version of a chapter produced by a publishing action. Post-
 _Avoid_: live chapter body, mutable page content
 
 **Quality Gate**:
-The set of required checks that a chapter must pass before public publishing. A quality gate is multi-condition, including canon and continuity, policy safety, originality and IP, metadata, rights and provenance, and human approval; a blocking failure prevents publication even if other scores are high.
+The set of required checks that a chapter must pass before public publishing. A quality gate is multi-condition, including canon and continuity, policy safety, originality and IP, metadata, rights and provenance, and human approval; a blocking failure prevents publication even if other scores are high. Its conditions are answered from two places kept apart: canon and continuity, policy safety, originality and IP, and metadata are judgements about the prose, so a checker reports them and a condition nobody reported a check for blocks rather than passes; rights, provenance, and human approval are read from the record, so no report speaks for them.
 _Avoid_: AI score, aggregate quality score
+
+**Quality Gate Result**:
+What one run of the Quality Gate concluded about a draft Chapter: a verdict for every condition, the score or note a checker gave where there was one, and the conditions that block. Public-publishing readiness is read off the blocking failures alone, which is what keeps a blocking failure from being outvoted however the reported scores are summed up. A result says what was true when the gate ran, so a later run is a new result and the Provenance Ledger keeps what each run found.
+_Avoid_: quality score, pass flag, gate status
 
 **Creative Disclosure**:
 The public label explaining how a series or chapter was created: Human, Hybrid, or AI-Assisted. Human means people wrote the creative work and AI only provided light mechanical support; Hybrid means AI materially contributed to outline or draft while people co-created and remain accountable; AI-Assisted means AI workflows produced most of the draft under human editorial oversight.

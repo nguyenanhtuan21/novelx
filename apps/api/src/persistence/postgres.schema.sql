@@ -65,6 +65,9 @@ create table if not exists chapter_drafts (
   workflow_materials jsonb,
   rights_record_id text,
   provenance_ledger_entry_id text,
+  -- What the Quality Gate concluded when it last ran: a verdict per condition,
+  -- the conditions that block, and whether the draft is publicly publishable.
+  -- A later run replaces it; what each run found is kept in the ledger.
   quality_gate jsonb,
   human_approval jsonb,
   created_at timestamptz not null default now(),
