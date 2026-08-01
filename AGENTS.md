@@ -14,3 +14,8 @@ Domain docs use a single-context layout: root `CONTEXT.md` plus root `docs/adr/`
 
 ### Custome rules
 - Speak Vietnamese for all case 
+- Create branch before implement a feature , like 'feature/[featurename]'
+- Compare and merge to main when implement done
+- Done: All test case green , when task has UI, alway use playwright MCP to test feature
+- Hard follow Clean Architecture , SOLID , YAGNI, KISS
+- Don't over engineering !
