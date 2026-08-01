@@ -5,6 +5,7 @@ import {
   type StaffAuditRecord,
 } from "@novelx/shared";
 
+import { pageSize } from "./page-size.js";
 import type { StaffAccountDirectory } from "./staff-accounts.js";
 import type { StaffAuditRepository } from "./staff-audit.repository.js";
 import {
@@ -136,7 +137,10 @@ export class StaffService {
       },
       async () => ({
         records: await this.staffAuditRepository.list({
-          limit: auditLogPageSize(input.limit),
+          limit: pageSize(input.limit, {
+            fallback: STAFF_AUDIT_LOG_PAGE_SIZE,
+            max: STAFF_AUDIT_LOG_MAX_PAGE_SIZE,
+          }),
         }),
       }),
     );
@@ -152,12 +156,4 @@ export class StaffService {
       ).toISOString(),
     };
   }
-}
-
-function auditLogPageSize(limit: number | undefined): number {
-  if (!limit || !Number.isFinite(limit) || limit < 1) {
-    return STAFF_AUDIT_LOG_PAGE_SIZE;
-  }
-
-  return Math.min(Math.floor(limit), STAFF_AUDIT_LOG_MAX_PAGE_SIZE);
 }

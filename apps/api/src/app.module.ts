@@ -7,14 +7,21 @@ import {
 import { CatalogController } from "./catalog.controller.js";
 import { CatalogService } from "./catalog.service.js";
 import { HealthController } from "./health.controller.js";
+import { InMemoryProvenanceRepository } from "./in-memory-provenance.repository.js";
 import { InMemoryReaderLibraryRepository } from "./in-memory-reader-library.repository.js";
 import { InMemoryRightsRepository } from "./in-memory-rights.repository.js";
 import { InMemoryStaffAuditRepository } from "./in-memory-staff-audit.repository.js";
 import { InMemoryStaffCmsRepository } from "./in-memory-staff-cms.repository.js";
 import { PostgresCatalogRepository } from "./postgres-catalog.repository.js";
+import { PostgresProvenanceRepository } from "./postgres-provenance.repository.js";
 import { PostgresReaderLibraryRepository } from "./postgres-reader-library.repository.js";
 import { PostgresRightsRepository } from "./postgres-rights.repository.js";
 import { PostgresStaffAuditRepository } from "./postgres-staff-audit.repository.js";
+import { ProvenanceLedger } from "./provenance-ledger.js";
+import {
+  PROVENANCE_REPOSITORY,
+  type ProvenanceRepository,
+} from "./provenance.repository.js";
 import { ReaderLibraryController } from "./reader-library.controller.js";
 import { RightsClearance } from "./rights-clearance.js";
 import {
@@ -43,6 +50,8 @@ import {
 import { StaffCmsController } from "./staff-cms.controller.js";
 import { StaffCmsService } from "./staff-cms.service.js";
 import { StaffOperationGate } from "./staff-operation-gate.js";
+import { StaffProvenanceController } from "./staff-provenance.controller.js";
+import { StaffProvenanceService } from "./staff-provenance.service.js";
 import { StaffRightsController } from "./staff-rights.controller.js";
 import { StaffRightsService } from "./staff-rights.service.js";
 import { PostgresStaffCmsRepository } from "./postgres-staff-cms.repository.js";
@@ -56,6 +65,7 @@ import { StaffService } from "./staff.service.js";
     ReaderLibraryController,
     StaffCmsController,
     StaffController,
+    StaffProvenanceController,
     StaffRightsController,
   ],
   providers: [
@@ -140,13 +150,52 @@ import { StaffService } from "./staff.service.js";
       inject: [RIGHTS_REPOSITORY],
     },
     {
+      provide: PROVENANCE_REPOSITORY,
+      useFactory: () =>
+        process.env.DATABASE_URL
+          ? new PostgresProvenanceRepository(process.env.DATABASE_URL)
+          : new InMemoryProvenanceRepository(),
+    },
+    {
+      provide: ProvenanceLedger,
+      useFactory: (provenanceRepository: ProvenanceRepository) =>
+        new ProvenanceLedger(provenanceRepository),
+      inject: [PROVENANCE_REPOSITORY],
+    },
+    {
       provide: StaffCmsService,
       useFactory: (
         gate: StaffOperationGate,
         staffCmsRepository: StaffCmsRepository,
         rightsClearance: RightsClearance,
-      ) => new StaffCmsService(gate, staffCmsRepository, rightsClearance),
-      inject: [StaffOperationGate, STAFF_CMS_REPOSITORY, RightsClearance],
+        provenanceLedger: ProvenanceLedger,
+      ) =>
+        new StaffCmsService(
+          gate,
+          staffCmsRepository,
+          rightsClearance,
+          provenanceLedger,
+        ),
+      inject: [
+        StaffOperationGate,
+        STAFF_CMS_REPOSITORY,
+        RightsClearance,
+        ProvenanceLedger,
+      ],
+    },
+    {
+      provide: StaffProvenanceService,
+      useFactory: (
+        gate: StaffOperationGate,
+        provenanceRepository: ProvenanceRepository,
+        staffCmsRepository: StaffCmsRepository,
+      ) =>
+        new StaffProvenanceService(
+          gate,
+          provenanceRepository,
+          staffCmsRepository,
+        ),
+      inject: [StaffOperationGate, PROVENANCE_REPOSITORY, STAFF_CMS_REPOSITORY],
     },
     {
       provide: StaffRightsService,

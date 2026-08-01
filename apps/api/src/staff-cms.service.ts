@@ -8,9 +8,12 @@ import {
   amendCanon,
   attachWorkflowMaterial,
   authorChapterDraft,
+  chapterDraftProvenance,
   createSeries,
   createStoryBible,
   lockStoryBible,
+  seriesProvenance,
+  storyBibleProvenance,
   updateSeries,
   type CanonEntry,
   type ChapterDraft,
@@ -22,6 +25,7 @@ import {
 } from "@novelx/shared";
 
 import { domainRule } from "./domain-rule.js";
+import { ProvenanceLedger } from "./provenance-ledger.js";
 import { RightsClearance } from "./rights-clearance.js";
 import {
   staffAuditTarget,
@@ -48,6 +52,12 @@ export type StaffCmsServiceOptions = {
  * is authorized against the Staff Account directory and recorded in the staff
  * audit trail before it happens. Domain rules — Managed Taxonomy, human-owned
  * Canon, draft attachment — live in the domain and are translated to HTTP here.
+ *
+ * A write that lands is then appended to the Provenance Ledger, so how a Series,
+ * its Canon, and its Chapters came to be what they are can be traced afterwards
+ * (ADR-0008). The two trails answer different questions: the audit trail keeps
+ * every attempt, including refused ones, and the ledger keeps what content
+ * changes actually happened.
  */
 @Injectable()
 export class StaffCmsService {
@@ -57,6 +67,7 @@ export class StaffCmsService {
     private readonly gate: StaffOperationGate,
     private readonly staffCmsRepository: StaffCmsRepository,
     private readonly rightsClearance: RightsClearance,
+    private readonly provenanceLedger: ProvenanceLedger,
     options: StaffCmsServiceOptions = {},
   ) {
     this.now = options.now ?? (() => new Date().toISOString());
@@ -69,7 +80,7 @@ export class StaffCmsService {
     return this.gate.run(
       input.principal,
       this.seriesOperation("create", input.series?.id),
-      async () => {
+      async (actor) => {
         const series = domainRule(() => createSeries(input.series));
 
         if (await this.staffCmsRepository.findSeries(series.id)) {
@@ -79,6 +90,11 @@ export class StaffCmsService {
         }
 
         await this.staffCmsRepository.saveSeries(series);
+        await this.provenanceLedger.append({
+          actor,
+          action: "series.create",
+          subject: seriesProvenance(series),
+        });
 
         return series;
       },
@@ -93,13 +109,18 @@ export class StaffCmsService {
     return this.gate.run(
       input.principal,
       this.seriesOperation("update", input.seriesId),
-      async () => {
+      async (actor) => {
         const series = await this.requireSeries(input.seriesId);
         const updated = domainRule(() =>
           updateSeries({ series, changes: input.changes ?? {} }),
         );
 
         await this.staffCmsRepository.saveSeries(updated);
+        await this.provenanceLedger.append({
+          actor,
+          action: "series.update",
+          subject: seriesProvenance(updated),
+        });
 
         return updated;
       },
@@ -169,6 +190,11 @@ export class StaffCmsService {
         );
 
         await this.staffCmsRepository.saveStoryBible(amended);
+        await this.provenanceLedger.append({
+          actor,
+          action: "story-bible.amend",
+          subject: storyBibleProvenance(amended),
+        });
 
         return amended;
       },
@@ -199,6 +225,17 @@ export class StaffCmsService {
         );
         await this.staffCmsRepository.saveStoryBible(locked);
 
+        // Locking a Story Bible that is already in production use changes
+        // nothing, and a line of lineage for a change that did not happen is
+        // worse than none.
+        if (locked !== storyBible) {
+          await this.provenanceLedger.append({
+            actor,
+            action: "story-bible.lock",
+            subject: storyBibleProvenance(locked),
+          });
+        }
+
         return locked;
       },
     );
@@ -222,7 +259,7 @@ export class StaffCmsService {
         target: staffAuditTarget("chapter-draft", input.draft?.id),
         permission: "chapter:write",
       },
-      async () => {
+      async (actor) => {
         const series = await this.requireSeries(input.seriesId);
         const draft = domainRule(() =>
           authorChapterDraft({ ...input.draft, series }),
@@ -230,6 +267,11 @@ export class StaffCmsService {
 
         await this.assertChapterIsFree(draft);
         await this.staffCmsRepository.saveChapterDraft(draft);
+        await this.provenanceLedger.append({
+          actor,
+          action: "chapter-draft.author",
+          subject: chapterDraftProvenance(draft),
+        });
 
         return draft;
       },
@@ -260,7 +302,7 @@ export class StaffCmsService {
         target: staffAuditTarget("chapter-draft", input.chapterId),
         permission: "chapter:write",
       },
-      async () => {
+      async (actor) => {
         const draft = await this.requireChapterDraft(input);
         const attachment = await this.rightsClearance.clear(input);
 
@@ -268,6 +310,11 @@ export class StaffCmsService {
           attachWorkflowMaterial({ draft, attachment }),
         );
         await this.staffCmsRepository.saveChapterDraft(attached);
+        await this.provenanceLedger.append({
+          actor,
+          action: "chapter-draft.attach-material",
+          subject: chapterDraftProvenance(attached),
+        });
 
         return attached;
       },

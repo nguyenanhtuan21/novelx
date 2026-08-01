@@ -125,5 +125,9 @@ The evidence-backed record of who owns or licenses an asset or dataset, where it
 _Avoid_: source URL, attribution note, license guess
 
 **Provenance Ledger**:
-The internal append-only, queryable record of how content and AI workflow artifacts were created, evaluated, edited, approved, revised, and published. For chapter text and workflow artifacts, this ledger is the source of truth; external content-credential metadata may only supplement it for media assets.
+The internal append-only, queryable record of how content and AI workflow artifacts were created, evaluated, edited, approved, revised, and published. For chapter text and workflow artifacts, this ledger is the source of truth; external content-credential metadata may only supplement it for media assets. It is made of provenance entries, and it holds only changes that happened: an attempt the boundary refused belongs to the Staff Audit Record instead, and reading lineage adds nothing to it.
 _Avoid_: C2PA as source of truth, audit log only
+
+**Provenance Entry**:
+One line of the Provenance Ledger: the source a content change came from, the action, the artifact it traces, and the version context that artifact carried at the time. A source is an accountable Staff Account or an AI workflow run named as itself, because how AI-assisted content was made is the fact the ledger exists to keep. Version context is the ids and numbers the artifact already carries — canon entry ids, a chapter number, the Rights Records that cleared its material — rather than a copy of its content, which would drift from the content it describes. An entry is written once; a correction is a later entry, never a quieter edit of an earlier one.
+_Avoid_: provenance log line, history record, audit entry
