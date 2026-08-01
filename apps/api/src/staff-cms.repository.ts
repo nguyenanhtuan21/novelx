@@ -16,5 +16,6 @@ export type StaffCmsRepository = {
   saveStoryBible(storyBible: StoryBible): Promise<void>;
   findStoryBible(seriesId: string): Promise<StoryBible | undefined>;
   saveChapterDraft(draft: ChapterDraft): Promise<void>;
+  findChapterDraft(chapterId: string): Promise<ChapterDraft | undefined>;
   listChapterDrafts(seriesId: string): Promise<ChapterDraft[]>;
 };

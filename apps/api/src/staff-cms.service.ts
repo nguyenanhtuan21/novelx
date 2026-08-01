@@ -1,27 +1,28 @@
 import {
   BadRequestException,
   ConflictException,
-  HttpException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
 import {
   amendCanon,
+  attachWorkflowMaterial,
   authorChapterDraft,
-  CANON_CHANGE_REQUIRES_REASON,
   createSeries,
   createStoryBible,
-  LockedCanonError,
   lockStoryBible,
-  StaffAccessDeniedError,
   updateSeries,
   type CanonEntry,
   type ChapterDraft,
   type RequestPrincipal,
+  type RightsUse,
   type Series,
   type StoryBible,
+  type WorkflowMaterial,
 } from "@novelx/shared";
 
+import { domainRule } from "./domain-rule.js";
+import { RightsClearance } from "./rights-clearance.js";
 import {
   staffAuditTarget,
   type StaffOperation,
@@ -55,6 +56,7 @@ export class StaffCmsService {
   constructor(
     private readonly gate: StaffOperationGate,
     private readonly staffCmsRepository: StaffCmsRepository,
+    private readonly rightsClearance: RightsClearance,
     options: StaffCmsServiceOptions = {},
   ) {
     this.now = options.now ?? (() => new Date().toISOString());
@@ -235,6 +237,62 @@ export class StaffCmsService {
   }
 
   /**
+   * Attaches material to the workflow carrying a draft Chapter, if a Rights
+   * Record covers that use of it.
+   *
+   * This is the gate ADR-0007 asks for, placed where material enters a workflow
+   * rather than at the publishing door: an AI workflow that has already read an
+   * unlicensed dataset cannot be un-run by refusing to publish afterwards.
+   */
+  async attachWorkflowMaterial(input: {
+    principal: RequestPrincipal;
+    seriesId: string;
+    chapterId: string;
+    material: WorkflowMaterial;
+    use: RightsUse;
+    territory: string;
+    modifies?: boolean;
+  }): Promise<ChapterDraft> {
+    return this.gate.run(
+      input.principal,
+      {
+        action: "staff.chapter-draft.attach-material",
+        target: staffAuditTarget("chapter-draft", input.chapterId),
+        permission: "chapter:write",
+      },
+      async () => {
+        const draft = await this.requireChapterDraft(input);
+        const attachment = await this.rightsClearance.clear(input);
+
+        const attached = domainRule(() =>
+          attachWorkflowMaterial({ draft, attachment }),
+        );
+        await this.staffCmsRepository.saveChapterDraft(attached);
+
+        return attached;
+      },
+    );
+  }
+
+  private async requireChapterDraft(input: {
+    seriesId: string;
+    chapterId: string;
+  }): Promise<ChapterDraft> {
+    const series = await this.requireSeries(input.seriesId);
+    const draft = await this.staffCmsRepository.findChapterDraft(
+      input.chapterId,
+    );
+
+    if (!draft || draft.seriesId !== series.id) {
+      throw new NotFoundException(
+        `Series ${series.id} holds no draft Chapter called ${input.chapterId}`,
+      );
+    }
+
+    return draft;
+  }
+
+  /**
    * Chapter order is what a reader follows, so two drafts cannot claim the same
    * place in a Series, and a draft cannot quietly overwrite an existing one.
    */
@@ -285,35 +343,5 @@ export class StaffCmsService {
       target: staffAuditTarget("story-bible", seriesId),
       permission: "canon:write",
     };
-  }
-}
-
-/**
- * Translates a broken domain rule into the answer an editor can act on: a bad
- * request for prose or metadata they can fix, a conflict for locked Canon they
- * must explain. A refusal the boundary already decided passes through
- * untouched, so an authorization failure never softens into a 400.
- */
-function domainRule<T>(apply: () => T): T {
-  try {
-    return apply();
-  } catch (error) {
-    if (
-      error instanceof HttpException ||
-      error instanceof StaffAccessDeniedError
-    ) {
-      throw error;
-    }
-
-    if (error instanceof LockedCanonError) {
-      throw new ConflictException({
-        error: CANON_CHANGE_REQUIRES_REASON,
-        message: error.message,
-      });
-    }
-
-    throw error instanceof Error
-      ? new BadRequestException(error.message)
-      : error;
   }
 }

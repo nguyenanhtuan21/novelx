@@ -27,6 +27,10 @@ export class InMemoryStaffCmsRepository implements StaffCmsRepository {
     this.chapterDrafts.set(draft.id, draft);
   }
 
+  async findChapterDraft(chapterId: string): Promise<ChapterDraft | undefined> {
+    return this.chapterDrafts.get(chapterId);
+  }
+
   async listChapterDrafts(seriesId: string): Promise<ChapterDraft[]> {
     return [...this.chapterDrafts.values()]
       .filter((draft) => draft.seriesId === seriesId)

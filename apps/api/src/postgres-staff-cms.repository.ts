@@ -7,6 +7,7 @@ import type {
   QualityGate,
   Series,
   StoryBible,
+  WorkflowMaterialAttachment,
 } from "@novelx/shared";
 
 import type { StaffCmsRepository } from "./staff-cms.repository.js";
@@ -34,11 +35,17 @@ type ChapterDraftRow = {
   title: string;
   body: string;
   creative_disclosure: CreativeDisclosure;
+  workflow_materials: WorkflowMaterialAttachment[] | null;
   rights_record_id: string | null;
   provenance_ledger_entry_id: string | null;
   quality_gate: QualityGate | null;
   human_approval: ChapterDraft["humanApproval"] | null;
 };
+
+const CHAPTER_DRAFT_COLUMNS = `id, series_id, chapter_number, title, body,
+                               creative_disclosure, workflow_materials,
+                               rights_record_id, provenance_ledger_entry_id,
+                               quality_gate, human_approval`;
 
 export class PostgresStaffCmsRepository implements StaffCmsRepository {
   private readonly pool: Pool;
@@ -139,16 +146,14 @@ export class PostgresStaffCmsRepository implements StaffCmsRepository {
 
   async saveChapterDraft(draft: ChapterDraft): Promise<void> {
     await this.pool.query(
-      `insert into chapter_drafts
-         (id, series_id, chapter_number, title, body, creative_disclosure,
-          rights_record_id, provenance_ledger_entry_id, quality_gate,
-          human_approval)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `insert into chapter_drafts (${CHAPTER_DRAFT_COLUMNS})
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        on conflict (id) do update set
          chapter_number = excluded.chapter_number,
          title = excluded.title,
          body = excluded.body,
          creative_disclosure = excluded.creative_disclosure,
+         workflow_materials = excluded.workflow_materials,
          rights_record_id = excluded.rights_record_id,
          provenance_ledger_entry_id = excluded.provenance_ledger_entry_id,
          quality_gate = excluded.quality_gate,
@@ -161,6 +166,9 @@ export class PostgresStaffCmsRepository implements StaffCmsRepository {
         draft.title,
         draft.body,
         draft.creativeDisclosure,
+        draft.workflowMaterials
+          ? JSON.stringify(draft.workflowMaterials)
+          : null,
         draft.rightsRecordId ?? null,
         draft.provenanceLedgerEntryId ?? null,
         draft.qualityGate ? JSON.stringify(draft.qualityGate) : null,
@@ -169,30 +177,45 @@ export class PostgresStaffCmsRepository implements StaffCmsRepository {
     );
   }
 
+  async findChapterDraft(chapterId: string): Promise<ChapterDraft | undefined> {
+    const found = await this.pool.query<ChapterDraftRow>(
+      `select ${CHAPTER_DRAFT_COLUMNS} from chapter_drafts where id = $1`,
+      [chapterId],
+    );
+    const row = found.rows[0];
+
+    return row ? toChapterDraft(row) : undefined;
+  }
+
   async listChapterDrafts(seriesId: string): Promise<ChapterDraft[]> {
     const drafts = await this.pool.query<ChapterDraftRow>(
-      `select id, series_id, chapter_number, title, body, creative_disclosure,
-              rights_record_id, provenance_ledger_entry_id, quality_gate,
-              human_approval
+      `select ${CHAPTER_DRAFT_COLUMNS}
          from chapter_drafts
         where series_id = $1
         order by chapter_number`,
       [seriesId],
     );
 
-    return drafts.rows.map((row) => ({
-      id: row.id,
-      seriesId: row.series_id,
-      chapterNumber: row.chapter_number,
-      title: row.title,
-      body: row.body,
-      creativeDisclosure: row.creative_disclosure,
-      ...(row.rights_record_id ? { rightsRecordId: row.rights_record_id } : {}),
-      ...(row.provenance_ledger_entry_id
-        ? { provenanceLedgerEntryId: row.provenance_ledger_entry_id }
-        : {}),
-      ...(row.quality_gate ? { qualityGate: row.quality_gate } : {}),
-      ...(row.human_approval ? { humanApproval: row.human_approval } : {}),
-    }));
+    return drafts.rows.map(toChapterDraft);
   }
+}
+
+function toChapterDraft(row: ChapterDraftRow): ChapterDraft {
+  return {
+    id: row.id,
+    seriesId: row.series_id,
+    chapterNumber: row.chapter_number,
+    title: row.title,
+    body: row.body,
+    creativeDisclosure: row.creative_disclosure,
+    ...(row.workflow_materials
+      ? { workflowMaterials: row.workflow_materials }
+      : {}),
+    ...(row.rights_record_id ? { rightsRecordId: row.rights_record_id } : {}),
+    ...(row.provenance_ledger_entry_id
+      ? { provenanceLedgerEntryId: row.provenance_ledger_entry_id }
+      : {}),
+    ...(row.quality_gate ? { qualityGate: row.quality_gate } : {}),
+    ...(row.human_approval ? { humanApproval: row.human_approval } : {}),
+  };
 }

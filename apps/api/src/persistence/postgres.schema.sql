@@ -21,6 +21,35 @@ create table if not exists story_bibles (
   check ((locked_by_staff_account_id is null) = (locked_at is null))
 );
 
+-- Who owns or licenses workflow material, where it may be used, for how long,
+-- whether it may be modified, and whether it may be used in AI workflows. The
+-- evidence is the grant somebody gave; a source URL is not one (ADR-0007).
+create table if not exists rights_records (
+  id text primary key,
+  -- The order grants were written in, so "most recently recorded" is answerable
+  -- even for two records sharing a timestamp.
+  recorded_seq bigint generated always as identity,
+  material_kind text not null check (material_kind in ('asset', 'dataset', 'reference', 'source-material')),
+  material_id text not null,
+  rights_owner text not null,
+  scope jsonb not null,
+  territories jsonb not null,
+  granted_from timestamptz not null,
+  granted_until timestamptz,
+  modification_allowed boolean not null,
+  ai_use_allowed boolean not null,
+  evidence jsonb not null,
+  recorded_by_staff_account_id text not null,
+  recorded_at timestamptz not null,
+  check (granted_until is null or granted_until > granted_from),
+  -- A record cannot clear AI-workflow use while the grant refuses AI use.
+  check (ai_use_allowed or not (scope @> '"ai-workflow"'::jsonb))
+);
+
+-- The lookup the rights gate makes: what covers this material?
+create index if not exists rights_records_material_idx
+  on rights_records (material_kind, material_id);
+
 -- Chapters being written. There is deliberately no publicly_readable column:
 -- reader-facing access runs through published_snapshots, so a draft has no
 -- public route by construction rather than by a flag someone must remember.
@@ -31,6 +60,9 @@ create table if not exists chapter_drafts (
   title text not null,
   body text not null,
   creative_disclosure text not null check (creative_disclosure in ('Human', 'Hybrid', 'AI-Assisted')),
+  -- Material cleared into this draft's workflow, each entry naming the Rights
+  -- Record that cleared it.
+  workflow_materials jsonb,
   rights_record_id text,
   provenance_ledger_entry_id text,
   quality_gate jsonb,

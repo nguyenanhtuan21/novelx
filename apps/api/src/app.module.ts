@@ -8,12 +8,19 @@ import { CatalogController } from "./catalog.controller.js";
 import { CatalogService } from "./catalog.service.js";
 import { HealthController } from "./health.controller.js";
 import { InMemoryReaderLibraryRepository } from "./in-memory-reader-library.repository.js";
+import { InMemoryRightsRepository } from "./in-memory-rights.repository.js";
 import { InMemoryStaffAuditRepository } from "./in-memory-staff-audit.repository.js";
 import { InMemoryStaffCmsRepository } from "./in-memory-staff-cms.repository.js";
 import { PostgresCatalogRepository } from "./postgres-catalog.repository.js";
 import { PostgresReaderLibraryRepository } from "./postgres-reader-library.repository.js";
+import { PostgresRightsRepository } from "./postgres-rights.repository.js";
 import { PostgresStaffAuditRepository } from "./postgres-staff-audit.repository.js";
 import { ReaderLibraryController } from "./reader-library.controller.js";
+import { RightsClearance } from "./rights-clearance.js";
+import {
+  RIGHTS_REPOSITORY,
+  type RightsRepository,
+} from "./rights.repository.js";
 import {
   READER_LIBRARY_REPOSITORY,
   type ReaderLibraryRepository,
@@ -36,6 +43,8 @@ import {
 import { StaffCmsController } from "./staff-cms.controller.js";
 import { StaffCmsService } from "./staff-cms.service.js";
 import { StaffOperationGate } from "./staff-operation-gate.js";
+import { StaffRightsController } from "./staff-rights.controller.js";
+import { StaffRightsService } from "./staff-rights.service.js";
 import { PostgresStaffCmsRepository } from "./postgres-staff-cms.repository.js";
 import { StaffController } from "./staff.controller.js";
 import { StaffService } from "./staff.service.js";
@@ -47,6 +56,7 @@ import { StaffService } from "./staff.service.js";
     ReaderLibraryController,
     StaffCmsController,
     StaffController,
+    StaffRightsController,
   ],
   providers: [
     {
@@ -117,12 +127,34 @@ import { StaffService } from "./staff.service.js";
           : new InMemoryStaffCmsRepository(),
     },
     {
+      provide: RIGHTS_REPOSITORY,
+      useFactory: () =>
+        process.env.DATABASE_URL
+          ? new PostgresRightsRepository(process.env.DATABASE_URL)
+          : new InMemoryRightsRepository(),
+    },
+    {
+      provide: RightsClearance,
+      useFactory: (rightsRepository: RightsRepository) =>
+        new RightsClearance(rightsRepository),
+      inject: [RIGHTS_REPOSITORY],
+    },
+    {
       provide: StaffCmsService,
       useFactory: (
         gate: StaffOperationGate,
         staffCmsRepository: StaffCmsRepository,
-      ) => new StaffCmsService(gate, staffCmsRepository),
-      inject: [StaffOperationGate, STAFF_CMS_REPOSITORY],
+        rightsClearance: RightsClearance,
+      ) => new StaffCmsService(gate, staffCmsRepository, rightsClearance),
+      inject: [StaffOperationGate, STAFF_CMS_REPOSITORY, RightsClearance],
+    },
+    {
+      provide: StaffRightsService,
+      useFactory: (
+        gate: StaffOperationGate,
+        rightsRepository: RightsRepository,
+      ) => new StaffRightsService(gate, rightsRepository),
+      inject: [StaffOperationGate, RIGHTS_REPOSITORY],
     },
   ],
 })

@@ -116,8 +116,12 @@ _Avoid_: free tags, folksonomy, hashtag taxonomy
 The MVP content strategy for NovelX: a controlled catalog of roughly 20 to 40 quality-reviewed series across four to six focused genres. A curated catalog is intentionally not a mass-published library or open creator marketplace.
 _Avoid_: content dump, marketplace catalog, SEO content farm
 
+**Workflow Material**:
+Something a workflow works from rather than something NovelX wrote: an asset, a dataset, a reference, or source material. It is named apart from Series and Chapters because the question it raises is where it came from, and it enters a workflow only by being attached to what that workflow carries — for the MVP, a Draft Chapter.
+_Avoid_: input, source file, upload
+
 **Rights Record**:
-The evidence-backed record of who owns or licenses an asset or dataset, where it may be used, for how long, whether it may be modified, and whether it may be used in AI workflows. Public availability on the Internet is not a rights record.
+The evidence-backed record of who owns or licenses an asset or dataset, where it may be used, for how long, whether it may be modified, and whether it may be used in AI workflows. Public availability on the Internet is not a rights record. Its scope says which workflows the material is cleared for and its AI-use right says whether the grant permits AI use at all; the two are kept apart because a licence routinely allows publishing while forbidding model use. A record is written once — a grant that has genuinely changed is a new record, so what was relied on at the time survives.
 _Avoid_: source URL, attribution note, license guess
 
 **Provenance Ledger**:
