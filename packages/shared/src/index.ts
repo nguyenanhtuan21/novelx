@@ -36,6 +36,25 @@ export type PublicCatalogSeries = Series & {
   firstPublicChapterId?: string;
 };
 
+/** One accepted truth of a Series: a world rule, character, or story fact. */
+export type CanonEntry = Readonly<{
+  id: string;
+  statement: string;
+}>;
+
+/** Who put a Story Bible into production use, and when. */
+export type CanonLock = Readonly<{
+  staffAccountId: string;
+  lockedAt: string;
+}>;
+
+export type StoryBible = Readonly<{
+  seriesId: string;
+  canon: readonly CanonEntry[];
+  /** Present once the Story Bible is locked; changes then need a reason. */
+  lock?: CanonLock;
+}>;
+
 export type StaffPrincipal = {
   kind: "staff";
   staffAccountId: string;
@@ -52,12 +71,23 @@ export type AnonymousReaderPrincipal = {
   anonymousSessionId: string;
 };
 
+/**
+ * An AI Factory workflow run reaching Core Platform. It is a system path, not a
+ * person: it never becomes staff, so it cannot pass a staff permission gate.
+ */
+export type AiWorkflowPrincipal = {
+  kind: "ai-workflow";
+  workspaceId: string;
+  workflowRunId: string;
+};
+
 export type Principal = StaffPrincipal | ReaderPrincipal;
 
 export type ReaderRequestPrincipal = ReaderPrincipal | AnonymousReaderPrincipal;
 
 /** Whoever a request presented, which may be no one and is rarely staff. */
-export type RequestPrincipal = Principal | ReaderRequestPrincipal | undefined;
+export type RequestPrincipal =
+  Principal | ReaderRequestPrincipal | AiWorkflowPrincipal | undefined;
 
 export type AiPersona = {
   id: string;
@@ -149,6 +179,98 @@ export function createSeries(
     ...input,
     status: input.status ?? "draft",
   };
+}
+
+export const CANON_CHANGE_REQUIRES_REASON = "canon-change-requires-reason";
+
+/**
+ * Refusal of a change to locked Canon that nobody explained. Locked Canon is
+ * not frozen — it is accountable: an editor may still change it, but only by
+ * saying why, so the change cannot happen silently.
+ */
+export class LockedCanonError extends Error {
+  readonly code = CANON_CHANGE_REQUIRES_REASON;
+
+  constructor() {
+    super("changing locked Canon requires an accountable reason");
+    this.name = "LockedCanonError";
+  }
+}
+
+/**
+ * Canon is human-owned (ADR-0002), so every canon write asserts here rather
+ * than trusting its caller: an AI Factory workflow, a reader session, or an
+ * unidentified request is refused even when it reaches the domain directly.
+ */
+export function assertStaffMayWriteCanon(
+  principal: RequestPrincipal,
+): asserts principal is StaffPrincipal {
+  assertStaffPermission(principal, "canon:write");
+}
+
+export function createStoryBible(input: {
+  seriesId: string;
+  canon?: readonly CanonEntry[];
+  actor: RequestPrincipal;
+}): StoryBible {
+  assertStaffMayWriteCanon(input.actor);
+  const canon = input.canon ?? [];
+  validateCanon(canon);
+
+  return Object.freeze({
+    seriesId: input.seriesId,
+    canon: Object.freeze([...canon]),
+  });
+}
+
+export function amendCanon(input: {
+  storyBible: StoryBible;
+  canon: readonly CanonEntry[];
+  actor: RequestPrincipal;
+  /** Required once the Story Bible is locked, so no locked change is silent. */
+  reason?: string;
+}): StoryBible {
+  assertStaffMayWriteCanon(input.actor);
+
+  if (input.storyBible.lock && !input.reason?.trim()) {
+    throw new LockedCanonError();
+  }
+
+  validateCanon(input.canon);
+
+  return Object.freeze({
+    ...input.storyBible,
+    canon: Object.freeze([...input.canon]),
+  });
+}
+
+/** Puts a Story Bible into production use, naming the human accountable for it. */
+export function lockStoryBible(input: {
+  storyBible: StoryBible;
+  actor: RequestPrincipal;
+  lockedAt: string;
+}): StoryBible {
+  assertStaffMayWriteCanon(input.actor);
+
+  return Object.freeze({
+    ...input.storyBible,
+    lock: Object.freeze({
+      staffAccountId: input.actor.staffAccountId,
+      lockedAt: input.lockedAt,
+    }),
+  });
+}
+
+function validateCanon(canon: readonly CanonEntry[]): void {
+  const ids = new Set<string>();
+
+  for (const entry of canon) {
+    if (!entry.id.trim() || !entry.statement.trim() || ids.has(entry.id)) {
+      throw new Error("Canon entries need a unique id and a statement");
+    }
+
+    ids.add(entry.id);
+  }
 }
 
 export function createChapterDraft(input: ChapterDraft): ChapterDraft {
@@ -282,6 +404,17 @@ export function createAnonymousReaderPrincipal(input: {
   };
 }
 
+export function createAiWorkflowPrincipal(input: {
+  workspaceId: string;
+  workflowRunId: string;
+}): AiWorkflowPrincipal {
+  return {
+    kind: "ai-workflow",
+    workspaceId: input.workspaceId,
+    workflowRunId: input.workflowRunId,
+  };
+}
+
 export const READER_ACCOUNT_UPGRADE_REQUIRED =
   "reader-account-upgrade-required";
 
@@ -319,6 +452,7 @@ export type StaffAuditActor =
   | { kind: "staff"; staffAccountId: string }
   | { kind: "reader"; readerAccountId: string }
   | { kind: "anonymous-reader"; anonymousSessionId: string }
+  | { kind: "ai-workflow"; workspaceId: string; workflowRunId: string }
   | { kind: "unauthenticated" };
 
 /**
@@ -345,6 +479,12 @@ export function staffAuditActor(principal: RequestPrincipal): StaffAuditActor {
       return {
         kind: "anonymous-reader",
         anonymousSessionId: principal.anonymousSessionId,
+      };
+    case "ai-workflow":
+      return {
+        kind: "ai-workflow",
+        workspaceId: principal.workspaceId,
+        workflowRunId: principal.workflowRunId,
       };
     default:
       return { kind: "unauthenticated" };
