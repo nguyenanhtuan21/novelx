@@ -21,6 +21,11 @@ import {
 export const PROVENANCE_PAGE_SIZE = 50;
 export const PROVENANCE_MAX_PAGE_SIZE = 500;
 
+const PROVENANCE_PAGE = {
+  fallback: PROVENANCE_PAGE_SIZE,
+  max: PROVENANCE_MAX_PAGE_SIZE,
+};
+
 /**
  * Where staff inspect how content was made: the lineage of a Series, its Story
  * Bible, a draft Chapter, or a publish operation.
@@ -56,7 +61,7 @@ export class StaffProvenanceService {
         return {
           entries: await this.provenanceRepository.listForSeries({
             seriesId: input.seriesId,
-            limit: provenancePageSize(input.limit),
+            limit: pageSize(input.limit, PROVENANCE_PAGE),
           }),
         };
       },
@@ -93,10 +98,8 @@ export class StaffProvenanceService {
 
         return {
           entries: await this.provenanceRepository.listForTarget({
-            seriesId: input.seriesId,
-            kind,
-            id: input.targetId,
-            limit: provenancePageSize(input.limit),
+            target: { kind, id: input.targetId, seriesId: input.seriesId },
+            limit: pageSize(input.limit, PROVENANCE_PAGE),
           }),
         };
       },
@@ -117,11 +120,4 @@ export class StaffProvenanceService {
 /** The artifact kind a request named, or nothing when the ledger traces no such thing. */
 function tracedKind(targetKind: string): ProvenanceTargetKind | undefined {
   return PROVENANCE_TARGET_KINDS.find((kind) => kind === targetKind);
-}
-
-function provenancePageSize(limit: number | undefined): number {
-  return pageSize(limit, {
-    fallback: PROVENANCE_PAGE_SIZE,
-    max: PROVENANCE_MAX_PAGE_SIZE,
-  });
 }

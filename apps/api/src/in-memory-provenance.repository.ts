@@ -1,4 +1,4 @@
-import type { ProvenanceEntry, ProvenanceTargetKind } from "@novelx/shared";
+import type { ProvenanceEntry, ProvenanceTarget } from "@novelx/shared";
 
 import type { ProvenanceRepository } from "./provenance.repository.js";
 
@@ -20,16 +20,14 @@ export class InMemoryProvenanceRepository implements ProvenanceRepository {
   }
 
   async listForTarget(input: {
-    seriesId: string;
-    kind: ProvenanceTargetKind;
-    id: string;
+    target: ProvenanceTarget;
     limit: number;
   }): Promise<ProvenanceEntry[]> {
     return this.mostRecent(
       (entry) =>
-        entry.target.seriesId === input.seriesId &&
-        entry.target.kind === input.kind &&
-        entry.target.id === input.id,
+        entry.target.seriesId === input.target.seriesId &&
+        entry.target.kind === input.target.kind &&
+        entry.target.id === input.target.id,
       input.limit,
     );
   }

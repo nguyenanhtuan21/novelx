@@ -12,33 +12,34 @@ import {
 
 import type { ProvenanceRepository } from "./provenance.repository.js";
 
-export type ProvenanceLedgerOptions = {
+export type ProvenanceRecorderOptions = {
   now?: () => string;
   nextEntryId?: () => string;
 };
 
 /**
- * Where a content change is written down as lineage.
+ * Writes a content change down as lineage: the one way an entry reaches the
+ * Provenance Ledger, so no caller mints an id or a time of its own.
  *
- * An entry is appended after the change is held, so the ledger says what
+ * An entry is recorded after the change is held, so the ledger says what
  * happened rather than what was attempted: a refused operation leaves evidence
  * in the Staff Audit Record, which is the trail for attempts, while this one is
  * the trail for content (ADR-0008).
  */
 @Injectable()
-export class ProvenanceLedger {
+export class ProvenanceRecorder {
   private readonly now: () => string;
   private readonly nextEntryId: () => string;
 
   constructor(
     private readonly provenanceRepository: ProvenanceRepository,
-    options: ProvenanceLedgerOptions = {},
+    options: ProvenanceRecorderOptions = {},
   ) {
     this.now = options.now ?? (() => new Date().toISOString());
     this.nextEntryId = options.nextEntryId ?? (() => randomUUID());
   }
 
-  async append(input: {
+  async record(input: {
     /** Staff or an AI workflow run: the ledger keeps them apart. */
     actor: StaffPrincipal | AiWorkflowPrincipal;
     action: string;

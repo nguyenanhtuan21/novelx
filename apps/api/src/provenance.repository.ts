@@ -1,4 +1,4 @@
-import type { ProvenanceEntry, ProvenanceTargetKind } from "@novelx/shared";
+import type { ProvenanceEntry, ProvenanceTarget } from "@novelx/shared";
 
 export const PROVENANCE_REPOSITORY = Symbol("PROVENANCE_REPOSITORY");
 
@@ -18,11 +18,9 @@ export type ProvenanceRepository = {
     seriesId: string;
     limit: number;
   }): Promise<ProvenanceEntry[]>;
-  /** One artifact's own lineage, scoped to the Series that holds it. */
+  /** One artifact's own lineage; the target names the Series that holds it. */
   listForTarget(input: {
-    seriesId: string;
-    kind: ProvenanceTargetKind;
-    id: string;
+    target: ProvenanceTarget;
     limit: number;
   }): Promise<ProvenanceEntry[]>;
 };

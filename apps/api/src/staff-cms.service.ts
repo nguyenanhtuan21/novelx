@@ -25,7 +25,7 @@ import {
 } from "@novelx/shared";
 
 import { domainRule } from "./domain-rule.js";
-import { ProvenanceLedger } from "./provenance-ledger.js";
+import { ProvenanceRecorder } from "./provenance-recorder.js";
 import { RightsClearance } from "./rights-clearance.js";
 import {
   staffAuditTarget,
@@ -67,7 +67,7 @@ export class StaffCmsService {
     private readonly gate: StaffOperationGate,
     private readonly staffCmsRepository: StaffCmsRepository,
     private readonly rightsClearance: RightsClearance,
-    private readonly provenanceLedger: ProvenanceLedger,
+    private readonly provenanceRecorder: ProvenanceRecorder,
     options: StaffCmsServiceOptions = {},
   ) {
     this.now = options.now ?? (() => new Date().toISOString());
@@ -90,7 +90,7 @@ export class StaffCmsService {
         }
 
         await this.staffCmsRepository.saveSeries(series);
-        await this.provenanceLedger.append({
+        await this.provenanceRecorder.record({
           actor,
           action: "series.create",
           subject: seriesProvenance(series),
@@ -116,7 +116,7 @@ export class StaffCmsService {
         );
 
         await this.staffCmsRepository.saveSeries(updated);
-        await this.provenanceLedger.append({
+        await this.provenanceRecorder.record({
           actor,
           action: "series.update",
           subject: seriesProvenance(updated),
@@ -190,7 +190,7 @@ export class StaffCmsService {
         );
 
         await this.staffCmsRepository.saveStoryBible(amended);
-        await this.provenanceLedger.append({
+        await this.provenanceRecorder.record({
           actor,
           action: "story-bible.amend",
           subject: storyBibleProvenance(amended),
@@ -229,7 +229,7 @@ export class StaffCmsService {
         // nothing, and a line of lineage for a change that did not happen is
         // worse than none.
         if (locked !== storyBible) {
-          await this.provenanceLedger.append({
+          await this.provenanceRecorder.record({
             actor,
             action: "story-bible.lock",
             subject: storyBibleProvenance(locked),
@@ -267,7 +267,7 @@ export class StaffCmsService {
 
         await this.assertChapterIsFree(draft);
         await this.staffCmsRepository.saveChapterDraft(draft);
-        await this.provenanceLedger.append({
+        await this.provenanceRecorder.record({
           actor,
           action: "chapter-draft.author",
           subject: chapterDraftProvenance(draft),
@@ -310,7 +310,7 @@ export class StaffCmsService {
           attachWorkflowMaterial({ draft, attachment }),
         );
         await this.staffCmsRepository.saveChapterDraft(attached);
-        await this.provenanceLedger.append({
+        await this.provenanceRecorder.record({
           actor,
           action: "chapter-draft.attach-material",
           subject: chapterDraftProvenance(attached),

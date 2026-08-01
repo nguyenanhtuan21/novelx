@@ -17,7 +17,7 @@ import { PostgresProvenanceRepository } from "./postgres-provenance.repository.j
 import { PostgresReaderLibraryRepository } from "./postgres-reader-library.repository.js";
 import { PostgresRightsRepository } from "./postgres-rights.repository.js";
 import { PostgresStaffAuditRepository } from "./postgres-staff-audit.repository.js";
-import { ProvenanceLedger } from "./provenance-ledger.js";
+import { ProvenanceRecorder } from "./provenance-recorder.js";
 import {
   PROVENANCE_REPOSITORY,
   type ProvenanceRepository,
@@ -157,9 +157,9 @@ import { StaffService } from "./staff.service.js";
           : new InMemoryProvenanceRepository(),
     },
     {
-      provide: ProvenanceLedger,
+      provide: ProvenanceRecorder,
       useFactory: (provenanceRepository: ProvenanceRepository) =>
-        new ProvenanceLedger(provenanceRepository),
+        new ProvenanceRecorder(provenanceRepository),
       inject: [PROVENANCE_REPOSITORY],
     },
     {
@@ -168,19 +168,19 @@ import { StaffService } from "./staff.service.js";
         gate: StaffOperationGate,
         staffCmsRepository: StaffCmsRepository,
         rightsClearance: RightsClearance,
-        provenanceLedger: ProvenanceLedger,
+        provenanceRecorder: ProvenanceRecorder,
       ) =>
         new StaffCmsService(
           gate,
           staffCmsRepository,
           rightsClearance,
-          provenanceLedger,
+          provenanceRecorder,
         ),
       inject: [
         StaffOperationGate,
         STAFF_CMS_REPOSITORY,
         RightsClearance,
-        ProvenanceLedger,
+        ProvenanceRecorder,
       ],
     },
     {

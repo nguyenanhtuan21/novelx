@@ -3,6 +3,7 @@ import {
   createProvenanceEntry,
   type ProvenanceEntry,
   type ProvenanceSource,
+  type ProvenanceTarget,
   type ProvenanceTargetKind,
   type ProvenanceVersion,
 } from "@novelx/shared";
@@ -66,9 +67,7 @@ export class PostgresProvenanceRepository implements ProvenanceRepository {
   }
 
   async listForTarget(input: {
-    seriesId: string;
-    kind: ProvenanceTargetKind;
-    id: string;
+    target: ProvenanceTarget;
     limit: number;
   }): Promise<ProvenanceEntry[]> {
     const found = await this.pool.query<ProvenanceRow>(
@@ -77,7 +76,7 @@ export class PostgresProvenanceRepository implements ProvenanceRepository {
         where series_id = $1 and target_kind = $2 and target_id = $3
         ${NEWEST_FIRST}
         limit $4`,
-      [input.seriesId, input.kind, input.id, input.limit],
+      [input.target.seriesId, input.target.kind, input.target.id, input.limit],
     );
 
     return found.rows.map(toProvenanceEntry);
