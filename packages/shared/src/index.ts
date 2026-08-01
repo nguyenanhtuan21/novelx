@@ -97,6 +97,14 @@ export type AiPersona = {
   canAuthenticate: false;
 };
 
+/**
+ * A Chapter being worked on: prose attached to a governed Series, never public.
+ *
+ * A draft starts as the prose an editor authored and nothing else. Rights
+ * Record, Provenance Ledger entry, Quality Gate result, and Human Approval are
+ * attached by the workflow that later carries it towards publishing, which is
+ * why each is absent until then rather than blank.
+ */
 export type ChapterDraft = {
   id: string;
   seriesId: string;
@@ -104,9 +112,9 @@ export type ChapterDraft = {
   title: string;
   body: string;
   creativeDisclosure: CreativeDisclosure;
-  rightsRecordId: string;
-  provenanceLedgerEntryId: string;
-  qualityGate: QualityGate;
+  rightsRecordId?: string;
+  provenanceLedgerEntryId?: string;
+  qualityGate?: QualityGate;
   humanApproval?: {
     reviewerStaffAccountId: string;
     approvedAt: string;
@@ -179,6 +187,17 @@ export function createSeries(
     ...input,
     status: input.status ?? "draft",
   };
+}
+
+/** Changes an editor may make to a Series; its identity is not one of them. */
+export function updateSeries(input: {
+  series: Series;
+  changes: Partial<Omit<Series, "id">>;
+}): Series {
+  const updated = { ...input.series, ...input.changes };
+  validateManagedTaxonomy(updated.taxonomy);
+
+  return updated;
 }
 
 export const CANON_CHANGE_REQUIRES_REASON = "canon-change-requires-reason";
@@ -273,12 +292,50 @@ function validateCanon(canon: readonly CanonEntry[]): void {
   }
 }
 
-export function createChapterDraft(input: ChapterDraft): ChapterDraft {
+/**
+ * Writes a draft Chapter against a governed Series. Taking the Series rather
+ * than its id is the attachment rule: there is no way to author a draft for a
+ * Series the CMS does not hold.
+ */
+export function authorChapterDraft(input: {
+  id: string;
+  series: Series;
+  chapterNumber: number;
+  title: string;
+  body: string;
+  creativeDisclosure?: CreativeDisclosure;
+}): ChapterDraft {
+  if (
+    !Number.isInteger(input.chapterNumber) ||
+    input.chapterNumber < 1 ||
+    !input.title.trim() ||
+    !input.body.trim()
+  ) {
+    throw new Error(
+      "draft Chapter needs a positive chapter number, a title, and prose",
+    );
+  }
+
+  return {
+    id: input.id,
+    seriesId: input.series.id,
+    chapterNumber: input.chapterNumber,
+    title: input.title,
+    body: input.body,
+    creativeDisclosure:
+      input.creativeDisclosure ?? input.series.creativeDisclosure,
+  };
+}
+
+/** Admits a draft to the workflow that carries it towards publishing. */
+export function createChapterDraft(
+  input: ChapterDraft & { rightsRecordId: string; qualityGate: QualityGate },
+): ChapterDraft {
   if (!input.rightsRecordId.trim()) {
     throw new Error("Rights Record is required before draft workflow entry");
   }
 
-  if (!input.provenanceLedgerEntryId.trim()) {
+  if (!input.provenanceLedgerEntryId?.trim()) {
     throw new Error(
       "Provenance Ledger entry is required before draft workflow entry",
     );
@@ -301,7 +358,7 @@ export function publishChapter(input: {
     throw new Error("chapter draft does not belong to the Series");
   }
 
-  validatePublishableDraft(draft);
+  assertPublishableDraft(draft);
 
   return createPublishedSnapshot({
     draft,
@@ -328,7 +385,7 @@ export function revisePublishedChapter(input: {
     throw new Error("post-publication fix must target the same Chapter");
   }
 
-  validatePublishableDraft(input.fixedDraft);
+  assertPublishableDraft(input.fixedDraft);
 
   return createPublishedSnapshot({
     draft: input.fixedDraft,
@@ -338,7 +395,20 @@ export function revisePublishedChapter(input: {
   });
 }
 
-function validatePublishableDraft(draft: ChapterDraft): void {
+/**
+ * A draft that has everything public publishing requires. Only
+ * `assertPublishableDraft` produces one, so a Published Snapshot cannot be
+ * built from a draft that skipped a gate.
+ */
+type PublishableChapterDraft = ChapterDraft & {
+  rightsRecordId: string;
+  provenanceLedgerEntryId: string;
+  qualityGate: QualityGate;
+};
+
+function assertPublishableDraft(
+  draft: ChapterDraft,
+): asserts draft is PublishableChapterDraft {
   if (!draft.rightsRecordId) {
     throw new Error("Rights Record is required before public publishing");
   }
@@ -346,6 +416,12 @@ function validatePublishableDraft(draft: ChapterDraft): void {
   if (!draft.provenanceLedgerEntryId) {
     throw new Error(
       "Provenance Ledger entry is required before public publishing",
+    );
+  }
+
+  if (!draft.qualityGate) {
+    throw new Error(
+      "Quality Gate evaluation is required before public publishing",
     );
   }
 
@@ -365,7 +441,7 @@ function validatePublishableDraft(draft: ChapterDraft): void {
 }
 
 function createPublishedSnapshot(input: {
-  draft: ChapterDraft;
+  draft: PublishableChapterDraft;
   actor: StaffPrincipal;
   publishedAt?: string;
   version: number;
