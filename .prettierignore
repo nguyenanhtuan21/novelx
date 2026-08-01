@@ -7,6 +7,7 @@ package-lock.json
 .agents/
 .claude/
 AGENTS.md
+CLAUDE.md
 CONTEXT.md
 deep-research-report.md
 docs/
