@@ -12,7 +12,9 @@ import type {
   CanonEntry,
   CreativeDisclosure,
   ManagedTaxonomy,
+  RightsUse,
   Series,
+  WorkflowMaterial,
 } from "@novelx/shared";
 
 import { StaffCmsService } from "./staff-cms.service.js";
@@ -41,6 +43,13 @@ type ChapterDraftBody = {
   title: string;
   body: string;
   creativeDisclosure?: CreativeDisclosure;
+};
+
+type WorkflowMaterialBody = {
+  material: WorkflowMaterial;
+  use: RightsUse;
+  territory: string;
+  modifies?: boolean;
 };
 
 /**
@@ -131,6 +140,25 @@ export class StaffCmsController {
       principal: staffBoundaryPrincipal({ staffAuthorization, authorization }),
       seriesId,
       draft: body,
+    });
+  }
+
+  @Post(":seriesId/chapters/:chapterId/materials")
+  attachWorkflowMaterial(
+    @Param("seriesId") seriesId: string,
+    @Param("chapterId") chapterId: string,
+    @Body() body: WorkflowMaterialBody,
+    @Headers(STAFF_SESSION_HEADER) staffAuthorization?: string,
+    @Headers("authorization") authorization?: string,
+  ) {
+    return this.staffCms.attachWorkflowMaterial({
+      principal: staffBoundaryPrincipal({ staffAuthorization, authorization }),
+      seriesId,
+      chapterId,
+      material: body?.material,
+      use: body?.use,
+      territory: body?.territory,
+      ...(body?.modifies === undefined ? {} : { modifies: body.modifies }),
     });
   }
 }

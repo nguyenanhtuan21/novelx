@@ -98,6 +98,93 @@ export type AiPersona = {
 };
 
 /**
+ * Something a workflow wants to work from rather than something NovelX wrote:
+ * an asset, a dataset, a reference, or source material. It is named apart from
+ * Chapters and Series because the question it raises is where it came from.
+ */
+export const WORKFLOW_MATERIAL_KINDS = [
+  "asset",
+  "dataset",
+  "reference",
+  "source-material",
+] as const;
+
+export type WorkflowMaterial = Readonly<{
+  id: string;
+  kind: (typeof WORKFLOW_MATERIAL_KINDS)[number];
+}>;
+
+/** A use of material that a Rights Record has to cover before it happens. */
+export const RIGHTS_USES = ["ai-workflow", "publishing"] as const;
+
+export type RightsUse = (typeof RIGHTS_USES)[number];
+
+/** A grant somebody actually gave, and the shape the grant took. */
+export type RightsEvidenceKind =
+  | "signed-licence"
+  | "written-permission"
+  | "work-for-hire"
+  | "public-domain-proof";
+
+/**
+ * A claim that only says the material could be reached. These are modelled
+ * instead of left out so that presenting one is refused for what it is: being
+ * findable on the Internet is not a grant, and neither is the URL it was found
+ * at (ADR-0007).
+ */
+export type UnbackedRightsClaim = "public-availability" | "source-url";
+
+export type RightsEvidence = Readonly<{
+  kind: RightsEvidenceKind | UnbackedRightsClaim;
+  /** Where the grant itself is held: a contract, a licence, a signed letter. */
+  reference: string;
+}>;
+
+/** How long the grant runs, open-ended until an expiry has been agreed. */
+export type RightsDuration = Readonly<{ from: string; until?: string }>;
+
+/** A territory value that covers every territory. */
+export const WORLDWIDE_TERRITORY = "worldwide";
+
+/**
+ * The evidence-backed record of who owns or licenses workflow material, where
+ * it may be used, for how long, whether it may be modified, and whether it may
+ * be used in AI workflows.
+ *
+ * `scope` says which NovelX workflows the material is cleared for; `aiUseAllowed`
+ * says whether the grant permits AI use at all. They are kept apart because a
+ * licence routinely allows publishing while forbidding model use, and reading
+ * that off a single field would make the safe answer the easy one to lose.
+ */
+export type RightsRecord = Readonly<{
+  id: string;
+  material: WorkflowMaterial;
+  owner: string;
+  scope: readonly RightsUse[];
+  territories: readonly string[];
+  duration: RightsDuration;
+  modificationAllowed: boolean;
+  aiUseAllowed: boolean;
+  evidence: RightsEvidence;
+  recordedByStaffAccountId: string;
+  recordedAt: string;
+}>;
+
+/**
+ * Material that passed the rights gate, and the Rights Record that let it
+ * through. Only `clearMaterialForWorkflowUse` produces one, so material cannot
+ * be attached to a workflow without a record that covers the use.
+ */
+export type WorkflowMaterialAttachment = Readonly<{
+  material: WorkflowMaterial;
+  use: RightsUse;
+  rightsRecordId: string;
+  territory: string;
+  modifies: boolean;
+  clearedAt: string;
+}>;
+
+/**
  * A Chapter being worked on: prose attached to a governed Series, never public.
  *
  * A draft starts as the prose an editor authored and nothing else. Rights
@@ -112,6 +199,8 @@ export type ChapterDraft = {
   title: string;
   body: string;
   creativeDisclosure: CreativeDisclosure;
+  /** Material cleared into this draft's workflow, absent until any is. */
+  workflowMaterials?: readonly WorkflowMaterialAttachment[];
   rightsRecordId?: string;
   provenanceLedgerEntryId?: string;
   qualityGate?: QualityGate;
@@ -335,6 +424,313 @@ export function authorChapterDraft(input: {
     creativeDisclosure:
       input.creativeDisclosure ?? input.series.creativeDisclosure,
   };
+}
+
+export const RIGHTS_EVIDENCE_REQUIRED = "rights-evidence-required";
+
+/**
+ * Refusal of a rights claim backed by nothing but reachability. A Rights Record
+ * records a grant somebody gave; a URL records where a file was downloaded.
+ */
+export class UnbackedRightsEvidenceError extends Error {
+  readonly code = RIGHTS_EVIDENCE_REQUIRED;
+
+  constructor(readonly claim: string) {
+    super(
+      `${claim} is not rights evidence: a Rights Record needs the grant somebody gave`,
+    );
+    this.name = "UnbackedRightsEvidenceError";
+  }
+}
+
+export const RIGHTS_RECORD_REQUIRED = "rights-record-required";
+
+/** Refusal of workflow material nobody has recorded the rights to. */
+export class RightsRecordRequiredError extends Error {
+  readonly code = RIGHTS_RECORD_REQUIRED;
+
+  constructor(message: string) {
+    super(message);
+    this.name = "RightsRecordRequiredError";
+  }
+}
+
+export const RIGHTS_GRANT_EXCEEDED = "rights-grant-exceeded";
+
+/**
+ * Refusal of a use the Rights Record does not cover. Distinct from a missing
+ * record: here the rights were checked and the grant says no, which is a
+ * different thing for an editor to answer than nobody having checked.
+ */
+export class RightsGrantExceededError extends Error {
+  readonly code = RIGHTS_GRANT_EXCEEDED;
+
+  constructor(
+    readonly rightsRecordId: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "RightsGrantExceededError";
+  }
+}
+
+export const WORKFLOW_MATERIAL_ALREADY_ATTACHED =
+  "workflow-material-already-attached";
+
+/**
+ * Refusal of material a draft's workflow already carries for that use. The
+ * attachment records when the material entered the workflow, so attaching it
+ * twice is refused rather than quietly re-dated.
+ */
+export class WorkflowMaterialAlreadyAttachedError extends Error {
+  readonly code = WORKFLOW_MATERIAL_ALREADY_ATTACHED;
+
+  constructor(message: string) {
+    super(message);
+    this.name = "WorkflowMaterialAlreadyAttachedError";
+  }
+}
+
+/** Recording rights is privileged work: it is what later uses are trusted to. */
+export function assertStaffMayRecordRights(
+  principal: RequestPrincipal,
+): asserts principal is StaffPrincipal {
+  assertStaffPermission(principal, "rights:write");
+}
+
+export function createRightsRecord(input: {
+  id: string;
+  material: WorkflowMaterial;
+  owner: string;
+  scope: readonly RightsUse[];
+  territories: readonly string[];
+  duration: RightsDuration;
+  modificationAllowed: boolean;
+  aiUseAllowed: boolean;
+  evidence: RightsEvidence;
+  actor: RequestPrincipal;
+  recordedAt: string;
+}): RightsRecord {
+  assertStaffMayRecordRights(input.actor);
+  validateWorkflowMaterial(input.material);
+  validateRightsEvidence(input.evidence);
+
+  if (
+    !input.owner?.trim() ||
+    input.scope.length === 0 ||
+    input.scope.some((use) => !RIGHTS_USES.includes(use)) ||
+    input.territories.length === 0 ||
+    input.territories.some((territory) => !territory?.trim())
+  ) {
+    throw new Error(
+      "Rights Record needs an owner, a scope of use, and a territory",
+    );
+  }
+
+  validateRightsDuration(input.duration);
+
+  // A record that claims AI-workflow scope while the grant refuses AI use is
+  // not a strict record or a lax one, it is a contradiction, and storing it
+  // would leave the two fields to be reconciled by whoever reads them next.
+  if (input.scope.includes("ai-workflow") && !input.aiUseAllowed) {
+    throw new Error(
+      "a Rights Record cannot clear AI-workflow use while the grant refuses AI use",
+    );
+  }
+
+  return Object.freeze({
+    id: input.id,
+    material: Object.freeze({ ...input.material }),
+    owner: input.owner,
+    scope: Object.freeze([...input.scope]),
+    territories: Object.freeze([...input.territories]),
+    duration: Object.freeze({ ...input.duration }),
+    modificationAllowed: input.modificationAllowed,
+    aiUseAllowed: input.aiUseAllowed,
+    evidence: Object.freeze({ ...input.evidence }),
+    recordedByStaffAccountId: input.actor.staffAccountId,
+    recordedAt: input.recordedAt,
+  });
+}
+
+/**
+ * The gate every workflow use of material passes: no Rights Record, no AI or
+ * publishing use (ADR-0007). It answers the rights question and only that, so
+ * an AI Factory workflow asking whether material is cleared gets the honest
+ * answer rather than a permission refusal — who may record rights and who may
+ * attach material are separate questions, asked at the staff boundary.
+ */
+export function clearMaterialForWorkflowUse(input: {
+  material: WorkflowMaterial;
+  use: RightsUse;
+  rightsRecord: RightsRecord | undefined;
+  territory: string;
+  modifies?: boolean;
+  usedAt: string;
+}): WorkflowMaterialAttachment {
+  const { material, use, rightsRecord: record } = input;
+  const named = `${material.kind} ${material.id}`;
+
+  if (!record) {
+    throw new RightsRecordRequiredError(
+      `${named} has no Rights Record, so it cannot enter ${use} use`,
+    );
+  }
+
+  if (
+    record.material.id !== material.id ||
+    record.material.kind !== material.kind
+  ) {
+    throw new RightsRecordRequiredError(
+      `Rights Record ${record.id} covers ${record.material.kind} ${record.material.id}, not ${named}`,
+    );
+  }
+
+  const exceeded = (why: string) => {
+    throw new RightsGrantExceededError(
+      record.id,
+      `${named} cannot enter ${use} use: ${why}`,
+    );
+  };
+
+  if (!record.scope.includes(use)) {
+    exceeded(`the grant does not cover ${use} use`);
+  }
+
+  // AI use is checked against the grant itself rather than only against the
+  // scope list, because it is the dimension where a wrong answer is a licensing
+  // breach instead of a metadata mistake.
+  if (use === "ai-workflow" && !record.aiUseAllowed) {
+    exceeded("the grant refuses AI use");
+  }
+
+  assertWithinRightsDuration(record, input.usedAt, exceeded);
+
+  if (
+    !record.territories.includes(WORLDWIDE_TERRITORY) &&
+    !record.territories.includes(input.territory)
+  ) {
+    exceeded(`the grant does not cover the ${input.territory} territory`);
+  }
+
+  if (input.modifies && !record.modificationAllowed) {
+    exceeded("the grant does not allow modification");
+  }
+
+  return Object.freeze({
+    material: Object.freeze({ ...material }),
+    use,
+    rightsRecordId: record.id,
+    territory: input.territory,
+    modifies: input.modifies ?? false,
+    clearedAt: input.usedAt,
+  });
+}
+
+/**
+ * Carries cleared material into a draft's workflow. It takes an attachment
+ * rather than a material and a record, so there is no way to attach material
+ * that did not go through the rights gate first.
+ */
+export function attachWorkflowMaterial(input: {
+  draft: ChapterDraft;
+  attachment: WorkflowMaterialAttachment;
+}): ChapterDraft {
+  const { attachment } = input;
+  const attached = input.draft.workflowMaterials ?? [];
+
+  if (
+    attached.some(
+      (entry) =>
+        entry.material.id === attachment.material.id &&
+        entry.material.kind === attachment.material.kind &&
+        entry.use === attachment.use,
+    )
+  ) {
+    throw new WorkflowMaterialAlreadyAttachedError(
+      `draft Chapter ${input.draft.id} already carries ${attachment.material.kind} ${attachment.material.id} for ${attachment.use} use`,
+    );
+  }
+
+  return {
+    ...input.draft,
+    workflowMaterials: [...attached, attachment],
+  };
+}
+
+function validateWorkflowMaterial(material: WorkflowMaterial): void {
+  if (
+    !material?.id?.trim() ||
+    !WORKFLOW_MATERIAL_KINDS.includes(material.kind)
+  ) {
+    throw new Error(
+      `workflow material needs an id and a kind: ${WORKFLOW_MATERIAL_KINDS.join(", ")}`,
+    );
+  }
+}
+
+function validateRightsEvidence(evidence: RightsEvidence): void {
+  const unbacked: readonly UnbackedRightsClaim[] = [
+    "public-availability",
+    "source-url",
+  ];
+  const backed: readonly RightsEvidenceKind[] = [
+    "signed-licence",
+    "written-permission",
+    "work-for-hire",
+    "public-domain-proof",
+  ];
+
+  if (unbacked.includes(evidence?.kind as UnbackedRightsClaim)) {
+    throw new UnbackedRightsEvidenceError(evidence.kind);
+  }
+
+  if (!backed.includes(evidence?.kind as RightsEvidenceKind)) {
+    throw new Error(
+      `Rights evidence must name how the grant is backed: ${backed.join(", ")}`,
+    );
+  }
+
+  if (!evidence.reference?.trim()) {
+    throw new Error("Rights evidence must reference the grant it is backed by");
+  }
+}
+
+function validateRightsDuration(duration: RightsDuration): void {
+  const from = Date.parse(duration?.from ?? "");
+  const until = duration?.until ? Date.parse(duration.until) : undefined;
+
+  if (
+    Number.isNaN(from) ||
+    (until !== undefined && (Number.isNaN(until) || until <= from))
+  ) {
+    throw new Error(
+      "Rights Record needs a duration that starts before it runs out",
+    );
+  }
+}
+
+function assertWithinRightsDuration(
+  record: RightsRecord,
+  usedAt: string,
+  exceeded: (why: string) => void,
+): void {
+  const at = Date.parse(usedAt);
+
+  if (Number.isNaN(at)) {
+    exceeded(
+      "the time of use is not a moment the grant can be checked against",
+    );
+    return;
+  }
+
+  if (at < Date.parse(record.duration.from)) {
+    exceeded(`the grant does not start until ${record.duration.from}`);
+  }
+
+  if (record.duration.until && at > Date.parse(record.duration.until)) {
+    exceeded(`the grant ran out on ${record.duration.until}`);
+  }
 }
 
 /** Admits a draft to the workflow that carries it towards publishing. */

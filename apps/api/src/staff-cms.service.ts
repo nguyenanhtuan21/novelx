@@ -1,27 +1,30 @@
 import {
   BadRequestException,
   ConflictException,
-  HttpException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
 import {
   amendCanon,
+  attachWorkflowMaterial,
   authorChapterDraft,
-  CANON_CHANGE_REQUIRES_REASON,
+  clearMaterialForWorkflowUse,
   createSeries,
   createStoryBible,
-  LockedCanonError,
   lockStoryBible,
-  StaffAccessDeniedError,
   updateSeries,
   type CanonEntry,
   type ChapterDraft,
   type RequestPrincipal,
+  type RightsUse,
   type Series,
   type StoryBible,
+  type WorkflowMaterial,
+  type WorkflowMaterialAttachment,
 } from "@novelx/shared";
 
+import { domainRule } from "./domain-rule.js";
+import type { RightsRepository } from "./rights.repository.js";
 import {
   staffAuditTarget,
   type StaffOperation,
@@ -55,6 +58,7 @@ export class StaffCmsService {
   constructor(
     private readonly gate: StaffOperationGate,
     private readonly staffCmsRepository: StaffCmsRepository,
+    private readonly rightsRepository: RightsRepository,
     options: StaffCmsServiceOptions = {},
   ) {
     this.now = options.now ?? (() => new Date().toISOString());
@@ -235,6 +239,148 @@ export class StaffCmsService {
   }
 
   /**
+   * Attaches material to the workflow carrying a draft Chapter, if a Rights
+   * Record covers that use of it.
+   *
+   * This is the gate ADR-0007 asks for, placed where material enters a workflow
+   * rather than at the publishing door: an AI workflow that has already read an
+   * unlicensed dataset cannot be un-run by refusing to publish afterwards.
+   */
+  async attachWorkflowMaterial(input: {
+    principal: RequestPrincipal;
+    seriesId: string;
+    chapterId: string;
+    material: WorkflowMaterial;
+    use: RightsUse;
+    territory: string;
+    modifies?: boolean;
+  }): Promise<ChapterDraft> {
+    return this.gate.run(
+      input.principal,
+      {
+        action: "staff.chapter-draft.attach-material",
+        target: staffAuditTarget("chapter-draft", input.chapterId),
+        permission: "chapter:write",
+      },
+      async () => {
+        const request = this.readMaterialRequest(input);
+        const draft = await this.requireChapterDraft(input);
+        const attachment = await this.clearMaterial(request);
+
+        const attached = domainRule(() =>
+          attachWorkflowMaterial({ draft, attachment }),
+        );
+        await this.staffCmsRepository.saveChapterDraft(attached);
+
+        return attached;
+      },
+    );
+  }
+
+  /**
+   * Finds the grant that covers this use, among however many cover the material.
+   *
+   * Material is routinely licensed more than once — publishing under one
+   * contract, AI use under another — so a single record failing is not an
+   * answer. Only when none of them covers the use is the use refused, and the
+   * refusal reported is the first grant's, which is the one an editor is most
+   * likely to be looking at.
+   */
+  private async clearMaterial(request: {
+    material: WorkflowMaterial;
+    use: RightsUse;
+    territory: string;
+    modifies: boolean;
+  }): Promise<WorkflowMaterialAttachment> {
+    const usedAt = this.now();
+    const records = await this.rightsRepository.listForMaterial(
+      request.material,
+    );
+    let refusal: unknown;
+
+    for (const rightsRecord of records) {
+      try {
+        return clearMaterialForWorkflowUse({
+          ...request,
+          rightsRecord,
+          usedAt,
+        });
+      } catch (error) {
+        refusal ??= error;
+      }
+    }
+
+    return domainRule(() => {
+      if (refusal) {
+        throw refusal;
+      }
+
+      return clearMaterialForWorkflowUse({
+        ...request,
+        rightsRecord: undefined,
+        usedAt,
+      });
+    });
+  }
+
+  /** Reads the material an editor named, before any of it is trusted. */
+  private readMaterialRequest(input: {
+    material: WorkflowMaterial;
+    use: RightsUse;
+    territory: string;
+    modifies?: boolean;
+  }): {
+    material: WorkflowMaterial;
+    use: RightsUse;
+    territory: string;
+    modifies: boolean;
+  } {
+    const kinds: WorkflowMaterial["kind"][] = [
+      "asset",
+      "dataset",
+      "reference",
+      "source-material",
+    ];
+    const uses: RightsUse[] = ["ai-workflow", "publishing"];
+
+    if (
+      !input.material?.id?.trim() ||
+      !kinds.includes(input.material?.kind) ||
+      !uses.includes(input.use) ||
+      !input.territory?.trim()
+    ) {
+      throw new BadRequestException(
+        `attaching workflow material needs a material id, a kind (${kinds.join(", ")}), a use (${uses.join(", ")}), and the territory the use happens in`,
+      );
+    }
+
+    return {
+      material: { id: input.material.id, kind: input.material.kind },
+      use: input.use,
+      territory: input.territory,
+      modifies: input.modifies === true,
+    };
+  }
+
+  private async requireChapterDraft(input: {
+    seriesId: string;
+    chapterId: string;
+  }): Promise<ChapterDraft> {
+    const series = await this.requireSeries(input.seriesId);
+    const draft = await this.staffCmsRepository.findChapterDraft(
+      input.chapterId,
+    );
+
+    if (!draft || draft.seriesId !== series.id) {
+      throw new NotFoundException(
+        `Series ${series.id} holds no draft Chapter called ${input.chapterId}`,
+      );
+    }
+
+    return draft;
+  }
+
+  /**
    * Chapter order is what a reader follows, so two drafts cannot claim the same
    * place in a Series, and a draft cannot quietly overwrite an existing one.
    */
@@ -285,35 +431,5 @@ export class StaffCmsService {
       target: staffAuditTarget("story-bible", seriesId),
       permission: "canon:write",
     };
-  }
-}
-
-/**
- * Translates a broken domain rule into the answer an editor can act on: a bad
- * request for prose or metadata they can fix, a conflict for locked Canon they
- * must explain. A refusal the boundary already decided passes through
- * untouched, so an authorization failure never softens into a 400.
- */
-function domainRule<T>(apply: () => T): T {
-  try {
-    return apply();
-  } catch (error) {
-    if (
-      error instanceof HttpException ||
-      error instanceof StaffAccessDeniedError
-    ) {
-      throw error;
-    }
-
-    if (error instanceof LockedCanonError) {
-      throw new ConflictException({
-        error: CANON_CHANGE_REQUIRES_REASON,
-        message: error.message,
-      });
-    }
-
-    throw error instanceof Error
-      ? new BadRequestException(error.message)
-      : error;
   }
 }
