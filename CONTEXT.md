@@ -41,12 +41,20 @@ An explicit approval decision by an accountable human reviewer before a chapter 
 _Avoid_: AI review, automated QA pass
 
 **Canon**:
-The accepted truth of a series, including its world rules, characters, timeline, relationships, and irreversible story facts. In the MVP, AI may propose canon changes, but locked canon is owned by accountable human authors or editors.
+The accepted truth of a series, including its world rules, characters, timeline, relationships, and irreversible story facts. In the MVP, AI may propose canon changes, but locked canon is owned by accountable human authors or editors. Canon is made of canon entries, each a single statement under an id that later continuity checks can name.
 _Avoid_: generated memory, model context
 
 **Story Bible**:
-The governed record of a series canon used by authors, editors, and AI workflows. Once locked for production use, changes to a story bible require human review and audit.
+The governed record of a series canon used by authors, editors, and AI workflows. A story bible is locked once it is in production use, which names the human accountable for it and the time they took that on. Locked is accountable rather than frozen: an editor may still change locked canon, but only by naming a reason, so what a lock rules out is the silent change rather than the change.
 _Avoid_: prompt context, loose notes, wiki
+
+**AI Workflow Run**:
+One execution of an AI Factory workflow, and the identity it carries when it reaches Core Platform. An AI workflow run is a system path rather than a person: it never becomes a staff account, so it cannot pass a staff permission gate, and it cannot write canon. Core Platform does not accept a request's own claim to be one, because an actor a caller asserts about itself is not evidence.
+_Avoid_: service account, staff automation, bot user
+
+**Draft Chapter**:
+A chapter being written in the staff CMS: prose attached to a governed series, and never publicly readable. A draft carries no rights record, provenance ledger entry, quality gate result, or human approval when it is authored; each is attached later by the workflow that carries it towards publishing, so their absence is the honest state of a fresh draft rather than a gate that was skipped.
+_Avoid_: unpublished chapter, private chapter, chapter revision
 
 **Published Snapshot**:
 The immutable public version of a chapter produced by a publishing action. Post-publication fixes create a new revision while preserving the previous snapshot internally with reason, actor, audit trail, and related ticket.

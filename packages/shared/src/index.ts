@@ -36,6 +36,25 @@ export type PublicCatalogSeries = Series & {
   firstPublicChapterId?: string;
 };
 
+/** One accepted truth of a Series: a world rule, character, or story fact. */
+export type CanonEntry = Readonly<{
+  id: string;
+  statement: string;
+}>;
+
+/** Who put a Story Bible into production use, and when. */
+export type CanonLock = Readonly<{
+  staffAccountId: string;
+  lockedAt: string;
+}>;
+
+export type StoryBible = Readonly<{
+  seriesId: string;
+  canon: readonly CanonEntry[];
+  /** Present once the Story Bible is locked; changes then need a reason. */
+  lock?: CanonLock;
+}>;
+
 export type StaffPrincipal = {
   kind: "staff";
   staffAccountId: string;
@@ -52,12 +71,23 @@ export type AnonymousReaderPrincipal = {
   anonymousSessionId: string;
 };
 
+/**
+ * An AI Factory workflow run reaching Core Platform. It is a system path, not a
+ * person: it never becomes staff, so it cannot pass a staff permission gate.
+ */
+export type AiWorkflowPrincipal = {
+  kind: "ai-workflow";
+  workspaceId: string;
+  workflowRunId: string;
+};
+
 export type Principal = StaffPrincipal | ReaderPrincipal;
 
 export type ReaderRequestPrincipal = ReaderPrincipal | AnonymousReaderPrincipal;
 
 /** Whoever a request presented, which may be no one and is rarely staff. */
-export type RequestPrincipal = Principal | ReaderRequestPrincipal | undefined;
+export type RequestPrincipal =
+  Principal | ReaderRequestPrincipal | AiWorkflowPrincipal | undefined;
 
 export type AiPersona = {
   id: string;
@@ -67,6 +97,14 @@ export type AiPersona = {
   canAuthenticate: false;
 };
 
+/**
+ * A Chapter being worked on: prose attached to a governed Series, never public.
+ *
+ * A draft starts as the prose an editor authored and nothing else. Rights
+ * Record, Provenance Ledger entry, Quality Gate result, and Human Approval are
+ * attached by the workflow that later carries it towards publishing, which is
+ * why each is absent until then rather than blank.
+ */
 export type ChapterDraft = {
   id: string;
   seriesId: string;
@@ -74,9 +112,9 @@ export type ChapterDraft = {
   title: string;
   body: string;
   creativeDisclosure: CreativeDisclosure;
-  rightsRecordId: string;
-  provenanceLedgerEntryId: string;
-  qualityGate: QualityGate;
+  rightsRecordId?: string;
+  provenanceLedgerEntryId?: string;
+  qualityGate?: QualityGate;
   humanApproval?: {
     reviewerStaffAccountId: string;
     approvedAt: string;
@@ -151,12 +189,163 @@ export function createSeries(
   };
 }
 
-export function createChapterDraft(input: ChapterDraft): ChapterDraft {
+/** Changes an editor may make to a Series; its identity is not one of them. */
+export function updateSeries(input: {
+  series: Series;
+  changes: Partial<Omit<Series, "id">>;
+}): Series {
+  const updated = { ...input.series, ...input.changes };
+  validateManagedTaxonomy(updated.taxonomy);
+
+  return updated;
+}
+
+export const CANON_CHANGE_REQUIRES_REASON = "canon-change-requires-reason";
+
+/**
+ * Refusal of a change to locked Canon that nobody explained. Locked Canon is
+ * not frozen — it is accountable: an editor may still change it, but only by
+ * saying why, so the change cannot happen silently.
+ */
+export class LockedCanonError extends Error {
+  readonly code = CANON_CHANGE_REQUIRES_REASON;
+
+  constructor() {
+    super("changing locked Canon requires an accountable reason");
+    this.name = "LockedCanonError";
+  }
+}
+
+/**
+ * Canon is human-owned (ADR-0002), so every canon write asserts here rather
+ * than trusting its caller: an AI Factory workflow, a reader session, or an
+ * unidentified request is refused even when it reaches the domain directly.
+ */
+export function assertStaffMayWriteCanon(
+  principal: RequestPrincipal,
+): asserts principal is StaffPrincipal {
+  assertStaffPermission(principal, "canon:write");
+}
+
+export function createStoryBible(input: {
+  seriesId: string;
+  canon?: readonly CanonEntry[];
+  actor: RequestPrincipal;
+}): StoryBible {
+  assertStaffMayWriteCanon(input.actor);
+  const canon = input.canon ?? [];
+  validateCanon(canon);
+
+  return Object.freeze({
+    seriesId: input.seriesId,
+    canon: Object.freeze([...canon]),
+  });
+}
+
+export function amendCanon(input: {
+  storyBible: StoryBible;
+  canon: readonly CanonEntry[];
+  actor: RequestPrincipal;
+  /** Required once the Story Bible is locked, so no locked change is silent. */
+  reason?: string;
+}): StoryBible {
+  assertStaffMayWriteCanon(input.actor);
+
+  if (input.storyBible.lock && !input.reason?.trim()) {
+    throw new LockedCanonError();
+  }
+
+  validateCanon(input.canon);
+
+  return Object.freeze({
+    ...input.storyBible,
+    canon: Object.freeze([...input.canon]),
+  });
+}
+
+/**
+ * Puts a Story Bible into production use, naming the human accountable for it.
+ *
+ * Locking an already-locked Story Bible changes nothing. The lock records who
+ * first took production use on, so a second lock must not quietly move that
+ * accountability to whoever pressed the button most recently.
+ */
+export function lockStoryBible(input: {
+  storyBible: StoryBible;
+  actor: RequestPrincipal;
+  lockedAt: string;
+}): StoryBible {
+  assertStaffMayWriteCanon(input.actor);
+
+  if (input.storyBible.lock) {
+    return input.storyBible;
+  }
+
+  return Object.freeze({
+    ...input.storyBible,
+    lock: Object.freeze({
+      staffAccountId: input.actor.staffAccountId,
+      lockedAt: input.lockedAt,
+    }),
+  });
+}
+
+function validateCanon(canon: readonly CanonEntry[]): void {
+  const ids = new Set<string>();
+
+  for (const entry of canon) {
+    if (!entry.id.trim() || !entry.statement.trim() || ids.has(entry.id)) {
+      throw new Error("Canon entries need a unique id and a statement");
+    }
+
+    ids.add(entry.id);
+  }
+}
+
+/**
+ * Writes a draft Chapter against a governed Series. Taking the Series rather
+ * than its id is the attachment rule: there is no way to author a draft for a
+ * Series the CMS does not hold.
+ */
+export function authorChapterDraft(input: {
+  id: string;
+  series: Series;
+  chapterNumber: number;
+  title: string;
+  body: string;
+  creativeDisclosure?: CreativeDisclosure;
+}): ChapterDraft {
+  if (
+    !Number.isInteger(input.chapterNumber) ||
+    input.chapterNumber < 1 ||
+    !input.title.trim() ||
+    !input.body.trim()
+  ) {
+    throw new Error(
+      "draft Chapter needs a positive chapter number, a title, and prose",
+    );
+  }
+
+  return {
+    id: input.id,
+    seriesId: input.series.id,
+    chapterNumber: input.chapterNumber,
+    title: input.title,
+    body: input.body,
+    creativeDisclosure:
+      input.creativeDisclosure ?? input.series.creativeDisclosure,
+  };
+}
+
+/** Admits a draft to the workflow that carries it towards publishing. */
+export function createChapterDraft(
+  input: ChapterDraft & { rightsRecordId: string; qualityGate: QualityGate },
+): ChapterDraft {
   if (!input.rightsRecordId.trim()) {
     throw new Error("Rights Record is required before draft workflow entry");
   }
 
-  if (!input.provenanceLedgerEntryId.trim()) {
+  if (!input.provenanceLedgerEntryId?.trim()) {
     throw new Error(
       "Provenance Ledger entry is required before draft workflow entry",
     );
@@ -179,7 +368,7 @@ export function publishChapter(input: {
     throw new Error("chapter draft does not belong to the Series");
   }
 
-  validatePublishableDraft(draft);
+  assertPublishableDraft(draft);
 
   return createPublishedSnapshot({
     draft,
@@ -206,7 +395,7 @@ export function revisePublishedChapter(input: {
     throw new Error("post-publication fix must target the same Chapter");
   }
 
-  validatePublishableDraft(input.fixedDraft);
+  assertPublishableDraft(input.fixedDraft);
 
   return createPublishedSnapshot({
     draft: input.fixedDraft,
@@ -216,7 +405,20 @@ export function revisePublishedChapter(input: {
   });
 }
 
-function validatePublishableDraft(draft: ChapterDraft): void {
+/**
+ * A draft that has everything public publishing requires. Only
+ * `assertPublishableDraft` produces one, so a Published Snapshot cannot be
+ * built from a draft that skipped a gate.
+ */
+type PublishableChapterDraft = ChapterDraft & {
+  rightsRecordId: string;
+  provenanceLedgerEntryId: string;
+  qualityGate: QualityGate;
+};
+
+function assertPublishableDraft(
+  draft: ChapterDraft,
+): asserts draft is PublishableChapterDraft {
   if (!draft.rightsRecordId) {
     throw new Error("Rights Record is required before public publishing");
   }
@@ -224,6 +426,12 @@ function validatePublishableDraft(draft: ChapterDraft): void {
   if (!draft.provenanceLedgerEntryId) {
     throw new Error(
       "Provenance Ledger entry is required before public publishing",
+    );
+  }
+
+  if (!draft.qualityGate) {
+    throw new Error(
+      "Quality Gate evaluation is required before public publishing",
     );
   }
 
@@ -243,7 +451,7 @@ function validatePublishableDraft(draft: ChapterDraft): void {
 }
 
 function createPublishedSnapshot(input: {
-  draft: ChapterDraft;
+  draft: PublishableChapterDraft;
   actor: StaffPrincipal;
   publishedAt?: string;
   version: number;
@@ -279,6 +487,17 @@ export function createAnonymousReaderPrincipal(input: {
   return {
     kind: "anonymous-reader",
     anonymousSessionId: input.anonymousSessionId,
+  };
+}
+
+export function createAiWorkflowPrincipal(input: {
+  workspaceId: string;
+  workflowRunId: string;
+}): AiWorkflowPrincipal {
+  return {
+    kind: "ai-workflow",
+    workspaceId: input.workspaceId,
+    workflowRunId: input.workflowRunId,
   };
 }
 
@@ -319,6 +538,7 @@ export type StaffAuditActor =
   | { kind: "staff"; staffAccountId: string }
   | { kind: "reader"; readerAccountId: string }
   | { kind: "anonymous-reader"; anonymousSessionId: string }
+  | { kind: "ai-workflow"; workspaceId: string; workflowRunId: string }
   | { kind: "unauthenticated" };
 
 /**
@@ -326,12 +546,22 @@ export type StaffAuditActor =
  * did, what they did it to, whether the boundary let them, and when. Refused
  * attempts are recorded too, so a reader probing the staff boundary leaves
  * evidence rather than silence.
+ *
+ * `outcome` is the boundary's decision on the attempt, not the result of the
+ * work: `allowed` says this actor was permitted to try, which is what makes a
+ * `denied` record meaningful.
  */
 export type StaffAuditRecord = Readonly<{
   actor: StaffAuditActor;
   action: string;
   target: string;
   outcome: "allowed" | "denied";
+  /**
+   * Why the operation was performed, for the operations that are only
+   * accountable when explained — changing locked Canon above all. Recording it
+   * here is what stops such a change from being silent after the fact.
+   */
+  reason?: string;
   recordedAt: string;
 }>;
 
@@ -346,6 +576,12 @@ export function staffAuditActor(principal: RequestPrincipal): StaffAuditActor {
         kind: "anonymous-reader",
         anonymousSessionId: principal.anonymousSessionId,
       };
+    case "ai-workflow":
+      return {
+        kind: "ai-workflow",
+        workspaceId: principal.workspaceId,
+        workflowRunId: principal.workflowRunId,
+      };
     default:
       return { kind: "unauthenticated" };
   }
@@ -356,6 +592,7 @@ export function createStaffAuditRecord(input: {
   action: string;
   target: string;
   outcome: StaffAuditRecord["outcome"];
+  reason?: string;
   recordedAt: string;
 }): StaffAuditRecord {
   if (!input.action.trim() || !input.target.trim()) {
@@ -366,6 +603,7 @@ export function createStaffAuditRecord(input: {
     actor: input.actor,
     action: input.action,
     target: input.target,
+    ...(input.reason?.trim() ? { reason: input.reason } : {}),
     outcome: input.outcome,
     recordedAt: input.recordedAt,
   });
@@ -621,13 +859,33 @@ export function grantEntitlement(
 
 function validateManagedTaxonomy(taxonomy: ManagedTaxonomy): void {
   if (
-    !taxonomy.genre.trim() ||
-    !taxonomy.subgenre.trim() ||
-    !taxonomy.audience.trim() ||
-    !taxonomy.ageRating.trim()
+    !taxonomy?.genre?.trim() ||
+    !taxonomy.subgenre?.trim() ||
+    !taxonomy.audience?.trim() ||
+    !taxonomy.ageRating?.trim()
   ) {
     throw new Error(
       "Managed Taxonomy requires genre, subgenre, audience, and age rating",
     );
+  }
+
+  // Every governed dimension has to arrive, even when it arrives empty. A
+  // taxonomy that simply omits contentWarnings would take the warnings off a
+  // Series a reader is about to open, which is the one dimension where a
+  // silently missing value is a safety problem rather than a metadata gap.
+  for (const dimension of [
+    "tropes",
+    "moods",
+    "themes",
+    "contentWarnings",
+  ] as const) {
+    if (
+      !Array.isArray(taxonomy[dimension]) ||
+      taxonomy[dimension].some((value) => typeof value !== "string")
+    ) {
+      throw new Error(
+        `Managed Taxonomy needs ${dimension} as a list of governed values, even when empty`,
+      );
+    }
   }
 }

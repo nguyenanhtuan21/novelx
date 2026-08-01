@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 
-import type { StaffPrincipal } from "@novelx/shared";
+import type { RequestPrincipal, StaffPrincipal } from "@novelx/shared";
 
+import {
+  namedReaderPrincipal,
+  readerSessionSecret,
+} from "./reader-principal.js";
 import { schemeToken } from "./session-header.js";
 import { staffPrincipalFromToken } from "./staff-session-token.js";
 
@@ -29,6 +33,30 @@ export function staffRequestPrincipal(input: {
   return token
     ? staffPrincipalFromToken({ token, secret: input.secret, now: input.now })
     : undefined;
+}
+
+/**
+ * Names whoever a request on the staff boundary presented.
+ *
+ * Only the staff header can produce a Staff Account. A reader session token is
+ * resolved solely so a refused attempt is audited as the reader session it came
+ * from, and never so that it counts towards staff access.
+ */
+export function staffBoundaryPrincipal(input: {
+  staffAuthorization: string | undefined;
+  authorization: string | undefined;
+}): RequestPrincipal {
+  return (
+    staffRequestPrincipal({
+      staffAuthorization: input.staffAuthorization,
+      secret: staffSessionSecret(),
+      now: new Date().toISOString(),
+    }) ??
+    namedReaderPrincipal({
+      authorization: input.authorization,
+      secret: readerSessionSecret(),
+    })
+  );
 }
 
 /**

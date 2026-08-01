@@ -1,0 +1,13 @@
+# Locked Canon changes need a named reason
+
+ADR-0002 makes Canon human-owned. That settles who may change it and leaves open what happens once a Story Bible is in production use, which is where the risk actually is: chapters, Quality Gate continuity checks, and AI workflow context all come to depend on canon, so a change to it reaches much further than the edit that made it.
+
+Locked Canon is therefore accountable rather than frozen. A Staff Account holding `canon:write` may still change locked Canon, but only by naming a reason; without one the change is refused as a conflict the editor can act on. Freezing it outright would be the simpler rule and the wrong one — an editor who locks a Story Bible with a mistake in it would have no way back, and the pressure would go somewhere worse, such as editing the database by hand. What must be impossible is not the change but the *silent* change, and the reason is what makes it non-silent.
+
+For that to be true the reason has to outlive the request, so it is carried into the Staff Audit Record alongside actor, action, target, outcome, and time. A reason that were only validated and then dropped would leave a locked-Canon rewrite indistinguishable from any other amendment after the fact, which is the situation this ADR exists to prevent. The record does not yet carry the before-and-after of the canon itself; that belongs with the wider audit detail the MVP spec asks for and is not required to make a change attributable.
+
+The lock names the human who *first* put the Story Bible into production use. Locking an already-locked Story Bible therefore changes nothing, rather than quietly moving that accountability to whoever pressed the button most recently.
+
+The gate lives in the domain, not at the HTTP boundary. Every canon write asserts `canon:write` itself, so a caller reaching the domain in-process — an AI Factory workflow running inside Core Platform, a future scheduled job, a test — is refused the same way a reader session is. An AI Factory workflow run is modelled as its own principal for exactly this reason: it is a system path, never becomes staff, and so fails the gate on the same line a reader does.
+
+The staff boundary accepts no self-asserted "I am a workflow" header. Evidence a caller writes about itself is not evidence, and an audit trail that can be told who to blame is worse than one that records an unidentified request. So a system path arrives as nobody until AI Factory has a real credential of its own, which the workflow tickets will give it; the audit trail already carries the actor shape that credential will fill.

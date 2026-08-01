@@ -9,6 +9,7 @@ import { CatalogService } from "./catalog.service.js";
 import { HealthController } from "./health.controller.js";
 import { InMemoryReaderLibraryRepository } from "./in-memory-reader-library.repository.js";
 import { InMemoryStaffAuditRepository } from "./in-memory-staff-audit.repository.js";
+import { InMemoryStaffCmsRepository } from "./in-memory-staff-cms.repository.js";
 import { PostgresCatalogRepository } from "./postgres-catalog.repository.js";
 import { PostgresReaderLibraryRepository } from "./postgres-reader-library.repository.js";
 import { PostgresStaffAuditRepository } from "./postgres-staff-audit.repository.js";
@@ -28,6 +29,14 @@ import {
   STAFF_AUDIT_REPOSITORY,
   type StaffAuditRepository,
 } from "./staff-audit.repository.js";
+import {
+  STAFF_CMS_REPOSITORY,
+  type StaffCmsRepository,
+} from "./staff-cms.repository.js";
+import { StaffCmsController } from "./staff-cms.controller.js";
+import { StaffCmsService } from "./staff-cms.service.js";
+import { StaffOperationGate } from "./staff-operation-gate.js";
+import { PostgresStaffCmsRepository } from "./postgres-staff-cms.repository.js";
 import { StaffController } from "./staff.controller.js";
 import { StaffService } from "./staff.service.js";
 
@@ -36,6 +45,7 @@ import { StaffService } from "./staff.service.js";
     CatalogController,
     HealthController,
     ReaderLibraryController,
+    StaffCmsController,
     StaffController,
   ],
   providers: [
@@ -79,12 +89,40 @@ import { StaffService } from "./staff.service.js";
           : new InMemoryStaffAuditRepository(),
     },
     {
-      provide: StaffService,
+      provide: StaffOperationGate,
       useFactory: (
         staffAccounts: StaffAccountDirectory,
         staffAuditRepository: StaffAuditRepository,
-      ) => new StaffService(staffAccounts, staffAuditRepository),
+      ) => new StaffOperationGate(staffAccounts, staffAuditRepository),
       inject: [STAFF_ACCOUNT_DIRECTORY, STAFF_AUDIT_REPOSITORY],
+    },
+    {
+      provide: StaffService,
+      useFactory: (
+        staffAccounts: StaffAccountDirectory,
+        gate: StaffOperationGate,
+        staffAuditRepository: StaffAuditRepository,
+      ) => new StaffService(staffAccounts, gate, staffAuditRepository),
+      inject: [
+        STAFF_ACCOUNT_DIRECTORY,
+        StaffOperationGate,
+        STAFF_AUDIT_REPOSITORY,
+      ],
+    },
+    {
+      provide: STAFF_CMS_REPOSITORY,
+      useFactory: () =>
+        process.env.DATABASE_URL
+          ? new PostgresStaffCmsRepository(process.env.DATABASE_URL)
+          : new InMemoryStaffCmsRepository(),
+    },
+    {
+      provide: StaffCmsService,
+      useFactory: (
+        gate: StaffOperationGate,
+        staffCmsRepository: StaffCmsRepository,
+      ) => new StaffCmsService(gate, staffCmsRepository),
+      inject: [StaffOperationGate, STAFF_CMS_REPOSITORY],
     },
   ],
 })
