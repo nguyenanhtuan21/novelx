@@ -21,7 +21,7 @@ type ScheduleBody = {
 };
 
 /** What an operation is only accountable with: why the operator did it. */
-type AccountableBody = {
+type ReasonBody = {
   reason?: unknown;
 };
 
@@ -101,7 +101,7 @@ export class StaffPublishingController {
   reviseChapter(
     @Param("seriesId") seriesId: string,
     @Param("chapterId") chapterId: string,
-    @Body() body: AccountableBody,
+    @Body() body: ReasonBody,
     @Headers(STAFF_SESSION_HEADER) staffAuthorization?: string,
     @Headers("authorization") authorization?: string,
   ) {
@@ -117,7 +117,7 @@ export class StaffPublishingController {
   takeDownChapter(
     @Param("seriesId") seriesId: string,
     @Param("chapterId") chapterId: string,
-    @Body() body: AccountableBody,
+    @Body() body: ReasonBody,
     @Headers(STAFF_SESSION_HEADER) staffAuthorization?: string,
     @Headers("authorization") authorization?: string,
   ) {

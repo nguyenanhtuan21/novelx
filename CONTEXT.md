@@ -57,7 +57,7 @@ A chapter being written in the staff CMS: prose attached to a governed series, a
 _Avoid_: unpublished chapter, private chapter, chapter revision
 
 **Published Snapshot**:
-The immutable public version of a chapter produced by a publishing action. It carries what made it publishable rather than a claim to have been: every Rights Record that cleared the chapter for publishing, and the Provenance Ledger entry its content traced when it went public. A post-publication fix is a further version rather than a change to this one, and it names the snapshot it replaced and the reason it replaced it, so every version a chapter ever published stays on the record with the accountable staff account beside it. Whether readers can open it is a separate question, answered by the Chapter Takedown record and never by a field here.
+The immutable public version of a chapter produced by a publishing action. It carries what made it publishable rather than a claim to have been: every Rights Record that cleared the chapter for publishing, and the Provenance Ledger entry its content traced when it went public. A post-publication fix is a revision: a further version rather than a change to this one, naming the snapshot it replaced and the reason it replaced it, so every version a chapter ever published stays on the record with the accountable staff account beside it. Whether readers can open it is a separate question, answered by the Chapter Takedown record and never by a field here.
 _Avoid_: live chapter body, mutable page content
 
 **Chapter Takedown**:

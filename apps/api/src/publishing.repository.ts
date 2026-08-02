@@ -44,8 +44,20 @@ export type PublishingRepository = {
     seriesId: string;
     chapterId: string;
   }): Promise<PublishedSnapshot | undefined>;
-  /** Stops distributing a Chapter. Writes nothing to its snapshots. */
-  takeDown(takedown: ChapterTakedown): Promise<void>;
+  /**
+   * Stops distributing a Chapter, writing nothing to its snapshots, and answers
+   * with the decision on record.
+   *
+   * The write happens once. Two moderators acting at the same time both reach
+   * here, and the second is told the first's decision rather than replacing it,
+   * so a takedown names who took it and not who came last. The outcome says
+   * which of the two this call was, so only the write that happened leaves a
+   * line of lineage.
+   */
+  takeDown(takedown: ChapterTakedown): Promise<{
+    outcome: "taken-down" | "already-taken-down";
+    takedown: ChapterTakedown;
+  }>;
   findTakedown(chapterId: string): Promise<ChapterTakedown | undefined>;
   schedule(schedule: ChapterPublicationSchedule): Promise<void>;
   findSchedule(

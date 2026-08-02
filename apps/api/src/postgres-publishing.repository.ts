@@ -53,11 +53,12 @@ const TAKEDOWN_COLUMNS = `chapter_id, series_id, snapshot_id, reason,
                           taken_down_by_staff_account_id, taken_down_at`;
 
 /**
- * The Chapters NovelX is still willing to distribute. Written once rather than
- * per query, because a reader-facing read that forgot it would put a Chapter
- * somebody took down back in front of readers.
+ * The Chapters NovelX is still willing to distribute, for a query that has
+ * aliased `published_snapshots` as `ps`. Written once and exported rather than
+ * repeated per query, because a reader-facing read that forgot it would put a
+ * Chapter somebody took down back in front of readers.
  */
-const NOT_TAKEN_DOWN = `not exists (
+export const NOT_TAKEN_DOWN = `not exists (
            select 1 from chapter_takedowns t where t.chapter_id = ps.chapter_id
          )`;
 
@@ -107,7 +108,7 @@ export class PostgresPublishingRepository implements PublishingRepository {
   }): Promise<PublishedSnapshot[]> {
     const versions = await this.pool.query<PublishedSnapshotRow>(
       `select ${SNAPSHOT_COLUMNS}
-         from published_snapshots ps
+         from published_snapshots
         where series_id = $1 and chapter_id = $2
         order by version desc`,
       [input.seriesId, input.chapterId],
@@ -119,7 +120,7 @@ export class PostgresPublishingRepository implements PublishingRepository {
   async publishedChapterNumbers(seriesId: string): Promise<number[]> {
     const published = await this.pool.query<{ chapter_number: number }>(
       `select distinct chapter_number
-         from published_snapshots ps
+         from published_snapshots
         where series_id = $1
         order by chapter_number`,
       [seriesId],
@@ -162,15 +163,32 @@ export class PostgresPublishingRepository implements PublishingRepository {
   }
 
   /**
-   * Stops distribution, writing nothing to the snapshots it stops. `do nothing`
-   * keeps the Staff Account that first took the decision, so a second takedown
-   * does not move the accountability to whoever came last.
+   * Stops distribution, writing nothing to the snapshots it stops.
+   *
+   * `do nothing` keeps the Staff Account that first took the decision, so a
+   * second takedown does not move the accountability to whoever came last. The
+   * write and the read of what is on record are one statement, because between
+   * two of them a second moderator could be told a decision that is not the one
+   * the table kept. A data-modifying CTE is not visible to the query around it,
+   * so the row written is read from `returning` and the row already there from
+   * the table — exactly one of the two exists.
    */
-  async takeDown(takedown: ChapterTakedown): Promise<void> {
-    await this.pool.query(
-      `insert into chapter_takedowns (${TAKEDOWN_COLUMNS})
-       values ($1, $2, $3, $4, $5, $6)
-       on conflict (chapter_id) do nothing`,
+  async takeDown(takedown: ChapterTakedown): Promise<{
+    outcome: "taken-down" | "already-taken-down";
+    takedown: ChapterTakedown;
+  }> {
+    const held = await this.pool.query<TakedownRow & { written: boolean }>(
+      `with written as (
+         insert into chapter_takedowns (${TAKEDOWN_COLUMNS})
+         values ($1, $2, $3, $4, $5, $6)
+         on conflict (chapter_id) do nothing
+         returning ${TAKEDOWN_COLUMNS}, true as written
+       )
+       select * from written
+       union all
+       select ${TAKEDOWN_COLUMNS}, false as written
+         from chapter_takedowns
+        where chapter_id = $1 and not exists (select 1 from written)`,
       [
         takedown.chapterId,
         takedown.seriesId,
@@ -180,6 +198,21 @@ export class PostgresPublishingRepository implements PublishingRepository {
         takedown.takenDownAt,
       ],
     );
+    const row = held.rows[0];
+
+    // The insert either wrote or conflicted with a row the union then read, so
+    // reaching here with neither means the row was deleted underneath us — and
+    // nothing in NovelX deletes a takedown.
+    if (!row) {
+      throw new Error(
+        `the takedown of Chapter ${takedown.chapterId} was neither written nor already on record`,
+      );
+    }
+
+    return {
+      outcome: row.written ? "taken-down" : "already-taken-down",
+      takedown: toChapterTakedown(row),
+    };
   }
 
   async findTakedown(chapterId: string): Promise<ChapterTakedown | undefined> {
@@ -191,16 +224,7 @@ export class PostgresPublishingRepository implements PublishingRepository {
     );
     const row = found.rows[0];
 
-    return row
-      ? Object.freeze({
-          seriesId: row.series_id,
-          chapterId: row.chapter_id,
-          snapshotId: row.snapshot_id,
-          reason: row.reason,
-          takenDownByStaffAccountId: row.taken_down_by_staff_account_id,
-          takenDownAt: row.taken_down_at.toISOString(),
-        })
-      : undefined;
+    return row ? toChapterTakedown(row) : undefined;
   }
 
   async schedule(schedule: ChapterPublicationSchedule): Promise<void> {
@@ -247,6 +271,17 @@ export class PostgresPublishingRepository implements PublishingRepository {
         })
       : undefined;
   }
+}
+
+function toChapterTakedown(row: TakedownRow): ChapterTakedown {
+  return Object.freeze({
+    seriesId: row.series_id,
+    chapterId: row.chapter_id,
+    snapshotId: row.snapshot_id,
+    reason: row.reason,
+    takenDownByStaffAccountId: row.taken_down_by_staff_account_id,
+    takenDownAt: row.taken_down_at.toISOString(),
+  });
 }
 
 function toPublishedSnapshot(row: PublishedSnapshotRow): PublishedSnapshot {

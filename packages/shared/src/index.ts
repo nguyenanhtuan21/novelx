@@ -913,13 +913,9 @@ export function clearMaterialForWorkflowUse(input: {
  * rather than a material and a record, so there is no way to attach material
  * that did not go through the rights gate first.
  *
- * Attaching changes what the draft is made of, so the Quality Gate result and
- * the Human Approval come off it. Both describe the draft as it was, and the
- * grants a Published Snapshot names are read from these attachments: leaving
- * them on would publish a Chapter citing a grant no run evaluated and no
- * reviewer saw. Re-running the gate and approving again is how a draft that
- * has changed becomes publishable, which is what makes approval mean the
- * content rather than the Chapter's name.
+ * Attaching changes what the draft is made of — the grants a Published Snapshot
+ * names are read from these attachments — so the draft loses its Quality Gate
+ * result and its Human Approval, per `withoutStaleGateAndApproval`.
  */
 export function attachWorkflowMaterial(input: {
   draft: ChapterDraft;
@@ -941,10 +937,25 @@ export function attachWorkflowMaterial(input: {
     );
   }
 
-  const changed = {
+  return withoutStaleGateAndApproval({
     ...input.draft,
     workflowMaterials: [...attached, attachment],
-  };
+  });
+}
+
+/**
+ * Takes the Quality Gate result and the Human Approval off a draft that has
+ * changed.
+ *
+ * Both describe the draft as it was: the gate judged that prose and that
+ * material, and a reviewer signed off the same. An approval therefore means the
+ * content rather than the Chapter's name, and leaving either on would let a
+ * Chapter reach readers citing a grant no run evaluated or prose no reviewer
+ * saw. Re-running the gate and approving again is how a changed draft becomes
+ * publishable, which is the one rule every route that changes a draft follows.
+ */
+function withoutStaleGateAndApproval(draft: ChapterDraft): ChapterDraft {
+  const changed = { ...draft };
   delete changed.qualityGate;
   delete changed.humanApproval;
 
@@ -952,16 +963,13 @@ export function attachWorkflowMaterial(input: {
 }
 
 /**
- * Rewrites the prose of a draft Chapter.
+ * Rewrites the prose of a draft Chapter, which is how a post-publication fix
+ * reaches the publishing door as new prose that has been through everything.
  *
- * The prose is what a Quality Gate run judged and what a reviewer signed off,
- * so rewriting it takes both off the draft — the rule attaching material
- * follows, for the same reason: an approval means the content, not the
- * Chapter's name. Re-running the gate and approving again is how a rewritten
- * draft becomes publishable, and it is how a post-publication fix reaches the
- * publishing door as new prose that has been through everything.
+ * The prose is the most direct thing a gate run judged and a reviewer signed
+ * off, so rewriting it costs the draft both, per `withoutStaleGateAndApproval`.
  *
- * A revision that changes nothing returns the draft it was given, so an
+ * A rewrite that changes nothing returns the draft it was given, so an
  * accidental resend does not cost a Chapter its approval.
  */
 export function reviseChapterDraft(input: {
@@ -980,11 +988,7 @@ export function reviseChapterDraft(input: {
     return input.draft;
   }
 
-  const revised = { ...input.draft, title, body };
-  delete revised.qualityGate;
-  delete revised.humanApproval;
-
-  return revised;
+  return withoutStaleGateAndApproval({ ...input.draft, title, body });
 }
 
 function validateWorkflowMaterial(material: WorkflowMaterial): void {

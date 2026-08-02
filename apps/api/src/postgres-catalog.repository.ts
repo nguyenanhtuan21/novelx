@@ -7,7 +7,10 @@ import type {
 } from "@novelx/shared";
 
 import type { CatalogRepository } from "./catalog.repository.js";
-import { PostgresPublishingRepository } from "./postgres-publishing.repository.js";
+import {
+  NOT_TAKEN_DOWN,
+  PostgresPublishingRepository,
+} from "./postgres-publishing.repository.js";
 
 type SeriesRow = {
   id: string;
@@ -50,12 +53,7 @@ export class PostgresCatalogRepository implements CatalogRepository {
          join lateral (
            select ps.chapter_id
              from published_snapshots ps
-            where ps.series_id = s.id
-              and not exists (
-                select 1
-                  from chapter_takedowns t
-                 where t.chapter_id = ps.chapter_id
-              )
+            where ps.series_id = s.id and ${NOT_TAKEN_DOWN}
             order by ps.chapter_number asc, ps.version desc
             limit 1
          ) first_public_chapter on true

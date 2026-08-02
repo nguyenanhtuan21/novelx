@@ -241,19 +241,9 @@ export class StaffPublishingService {
         reason,
       },
       async (actor) => {
-        const { series, draft } = await requireSeriesChapter(
-          this.staffCmsRepository,
-          input,
-        );
-        const [versions, takedown, lineage] = await Promise.all([
-          this.publishingRepository.listChapterVersions({
-            seriesId: series.id,
-            chapterId: draft.id,
-          }),
-          this.publishingRepository.findTakedown(draft.id),
-          this.draftLineage(draft),
-        ]);
-
+        const { series, draft, versions, takedown } =
+          await this.readChapterPublication(input);
+        const lineage = await this.draftLineage(draft);
         const previousSnapshot = domainRule(() =>
           requirePublished(versions[0], series.id, draft.id),
         );
@@ -306,40 +296,33 @@ export class StaffPublishingService {
         reason,
       },
       async (actor) => {
-        const { series, draft } = await requireSeriesChapter(
-          this.staffCmsRepository,
-          input,
-        );
-        const [versions, held] = await Promise.all([
-          this.publishingRepository.listChapterVersions({
-            seriesId: series.id,
-            chapterId: draft.id,
-          }),
-          this.publishingRepository.findTakedown(draft.id),
-        ]);
-
-        if (held) {
-          return held;
-        }
-
+        const { series, draft, versions } =
+          await this.readChapterPublication(input);
         const snapshot = domainRule(() =>
           requirePublished(versions[0], series.id, draft.id),
         );
-        const takedown = domainRule(() =>
-          takeDownPublishedChapter({
-            snapshot,
-            actor,
-            reason,
-            takenDownAt: this.now(),
-          }),
+
+        const { outcome, takedown } = await this.publishingRepository.takeDown(
+          domainRule(() =>
+            takeDownPublishedChapter({
+              snapshot,
+              actor,
+              reason,
+              takenDownAt: this.now(),
+            }),
+          ),
         );
 
-        await this.publishingRepository.takeDown(takedown);
-        await this.provenanceRecorder.record({
-          actor,
-          action: "published-snapshot.takedown",
-          subject: publishedSnapshotProvenance(snapshot),
-        });
+        // The repository keeps the decision that was already there, so a repeat
+        // changes nothing — and a line of lineage for a change that did not
+        // happen would name a moderator the record does not hold.
+        if (outcome === "taken-down") {
+          await this.provenanceRecorder.record({
+            actor,
+            action: "published-snapshot.takedown",
+            subject: publishedSnapshotProvenance(snapshot),
+          });
+        }
 
         return takedown;
       },
@@ -368,17 +351,8 @@ export class StaffPublishingService {
         permission: "series:read",
       },
       async () => {
-        const { series, draft } = await requireSeriesChapter(
-          this.staffCmsRepository,
-          input,
-        );
-        const [versions, takedown] = await Promise.all([
-          this.publishingRepository.listChapterVersions({
-            seriesId: series.id,
-            chapterId: draft.id,
-          }),
-          this.publishingRepository.findTakedown(draft.id),
-        ]);
+        const { draft, versions, takedown } =
+          await this.readChapterPublication(input);
 
         return {
           chapterId: draft.id,
@@ -387,6 +361,32 @@ export class StaffPublishingService {
         };
       },
     );
+  }
+
+  /**
+   * A Chapter, the Series that holds it, and what NovelX has published of it.
+   *
+   * Revising, taking down, and inspecting all start from the same four facts,
+   * and reading them in one place is what keeps a route from acting on the
+   * record while answering from the distribution, or the other way round.
+   */
+  private async readChapterPublication(input: {
+    seriesId: string;
+    chapterId: string;
+  }) {
+    const { series, draft } = await requireSeriesChapter(
+      this.staffCmsRepository,
+      input,
+    );
+    const [versions, takedown] = await Promise.all([
+      this.publishingRepository.listChapterVersions({
+        seriesId: series.id,
+        chapterId: draft.id,
+      }),
+      this.publishingRepository.findTakedown(draft.id),
+    ]);
+
+    return { series, draft, versions, takedown };
   }
 
   /**

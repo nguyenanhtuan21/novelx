@@ -80,8 +80,19 @@ export class InMemoryPublishingRepository implements PublishingRepository {
     );
   }
 
-  async takeDown(takedown: ChapterTakedown): Promise<void> {
+  async takeDown(takedown: ChapterTakedown): Promise<{
+    outcome: "taken-down" | "already-taken-down";
+    takedown: ChapterTakedown;
+  }> {
+    const held = this.takedowns.get(takedown.chapterId);
+
+    if (held) {
+      return { outcome: "already-taken-down", takedown: held };
+    }
+
     this.takedowns.set(takedown.chapterId, takedown);
+
+    return { outcome: "taken-down", takedown };
   }
 
   async findTakedown(chapterId: string): Promise<ChapterTakedown | undefined> {
