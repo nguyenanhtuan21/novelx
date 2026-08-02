@@ -321,6 +321,19 @@ export type ChapterPublicationSchedule = Readonly<{
   scheduledAt: string;
 }>;
 
+/**
+ * Why a Published Snapshot replaced the one before it.
+ *
+ * A post-publication fix is a further version rather than a correction of the
+ * earlier one, so what readers saw stays exactly as they saw it (ADR-0003) and
+ * the reason it stopped being the public version is on the record that replaced
+ * it, rather than only in a log beside it.
+ */
+export type PublishedSnapshotRevision = Readonly<{
+  supersedesSnapshotId: string;
+  reason: string;
+}>;
+
 export type PublishedSnapshot = Readonly<{
   id: string;
   chapterId: string;
@@ -336,7 +349,30 @@ export type PublishedSnapshot = Readonly<{
   rightsRecordIds: readonly string[];
   publishedAt: string;
   publishedByStaffAccountId: string;
-  publiclyReadable: true;
+  /** Why this version replaced the one before it; absent on a first publication. */
+  revision?: PublishedSnapshotRevision;
+}>;
+
+/**
+ * A published Chapter NovelX has stopped distributing, and why.
+ *
+ * A takedown is a decision about distribution, not a change to the record: it
+ * names the Published Snapshot that was public when distribution stopped and
+ * leaves it exactly as it was, so what readers saw is still answerable after
+ * they can no longer open it (ADR-0003). Reason, actor, and time are all on it,
+ * because a takedown nobody has to explain is not evidence of anything.
+ *
+ * It is keyed by Chapter rather than by snapshot: a Chapter that has been taken
+ * down stays dark, so a later version cannot quietly walk back out.
+ */
+export type ChapterTakedown = Readonly<{
+  seriesId: string;
+  chapterId: string;
+  /** The Published Snapshot that was public when distribution stopped. */
+  snapshotId: string;
+  reason: string;
+  takenDownByStaffAccountId: string;
+  takenDownAt: string;
 }>;
 
 /**
@@ -877,13 +913,9 @@ export function clearMaterialForWorkflowUse(input: {
  * rather than a material and a record, so there is no way to attach material
  * that did not go through the rights gate first.
  *
- * Attaching changes what the draft is made of, so the Quality Gate result and
- * the Human Approval come off it. Both describe the draft as it was, and the
- * grants a Published Snapshot names are read from these attachments: leaving
- * them on would publish a Chapter citing a grant no run evaluated and no
- * reviewer saw. Re-running the gate and approving again is how a draft that
- * has changed becomes publishable, which is what makes approval mean the
- * content rather than the Chapter's name.
+ * Attaching changes what the draft is made of — the grants a Published Snapshot
+ * names are read from these attachments — so the draft loses its Quality Gate
+ * result and its Human Approval, per `withoutStaleGateAndApproval`.
  */
 export function attachWorkflowMaterial(input: {
   draft: ChapterDraft;
@@ -905,14 +937,58 @@ export function attachWorkflowMaterial(input: {
     );
   }
 
-  const changed = {
+  return withoutStaleGateAndApproval({
     ...input.draft,
     workflowMaterials: [...attached, attachment],
-  };
+  });
+}
+
+/**
+ * Takes the Quality Gate result and the Human Approval off a draft that has
+ * changed.
+ *
+ * Both describe the draft as it was: the gate judged that prose and that
+ * material, and a reviewer signed off the same. An approval therefore means the
+ * content rather than the Chapter's name, and leaving either on would let a
+ * Chapter reach readers citing a grant no run evaluated or prose no reviewer
+ * saw. Re-running the gate and approving again is how a changed draft becomes
+ * publishable, which is the one rule every route that changes a draft follows.
+ */
+function withoutStaleGateAndApproval(draft: ChapterDraft): ChapterDraft {
+  const changed = { ...draft };
   delete changed.qualityGate;
   delete changed.humanApproval;
 
   return changed;
+}
+
+/**
+ * Rewrites the prose of a draft Chapter, which is how a post-publication fix
+ * reaches the publishing door as new prose that has been through everything.
+ *
+ * The prose is the most direct thing a gate run judged and a reviewer signed
+ * off, so rewriting it costs the draft both, per `withoutStaleGateAndApproval`.
+ *
+ * A rewrite that changes nothing returns the draft it was given, so an
+ * accidental resend does not cost a Chapter its approval.
+ */
+export function reviseChapterDraft(input: {
+  draft: ChapterDraft;
+  title?: string;
+  body?: string;
+}): ChapterDraft {
+  const title = input.title ?? input.draft.title;
+  const body = input.body ?? input.draft.body;
+
+  if (!title.trim() || !body.trim()) {
+    throw new Error("a draft Chapter needs a title and prose");
+  }
+
+  if (title === input.draft.title && body === input.draft.body) {
+    return input.draft;
+  }
+
+  return withoutStaleGateAndApproval({ ...input.draft, title, body });
 }
 
 function validateWorkflowMaterial(material: WorkflowMaterial): void {
@@ -1306,6 +1382,8 @@ export const PUBLICATION_REFUSALS = [
   "chapter-already-published",
   "chapter-out-of-sequence",
   "publication-not-due",
+  "chapter-not-published",
+  "chapter-under-takedown",
 ] as const;
 
 export type PublicationRefusal = (typeof PUBLICATION_REFUSALS)[number];
@@ -1501,34 +1579,113 @@ function assertPublicationIsDue(
   }
 }
 
+/**
+ * Fixes a Chapter after publication by publishing a further version of it.
+ *
+ * The previous snapshot is read rather than written: it says what readers saw,
+ * and a fix that edited it would destroy the only record of that (ADR-0003).
+ * The new version carries the reason and the snapshot it replaced, so the
+ * public text and why it changed are answerable from the same record.
+ *
+ * A fix is new prose, so it goes back through everything: the Quality Gate must
+ * have run on the fixed draft and a reviewer must have approved it. A Chapter
+ * under takedown is refused outright — republishing it would be a way around a
+ * decision to stop distributing it, taken by whoever holds a different
+ * permission.
+ */
 export function revisePublishedChapter(input: {
+  series: Series;
   previousSnapshot: PublishedSnapshot;
   fixedDraft: ChapterDraft;
   actor: RequestPrincipal;
   /** The fixed draft's lineage as the Provenance Ledger holds it. */
   lineage: readonly ProvenanceEntry[];
   reason: string;
+  /** Present when distribution of this Chapter has already been stopped. */
+  takedown?: ChapterTakedown;
   publishedAt?: string;
 }): PublishedSnapshot {
+  const { fixedDraft, previousSnapshot } = input;
   assertStaffMayPublish(input.actor);
 
-  if (!input.reason.trim()) {
+  if (!input.reason?.trim()) {
     throw new Error("post-publication fixes require an accountable reason");
   }
 
-  if (input.previousSnapshot.chapterId !== input.fixedDraft.id) {
+  if (previousSnapshot.chapterId !== fixedDraft.id) {
     throw new Error("post-publication fix must target the same Chapter");
   }
 
-  assertPublishableDraft(input.fixedDraft);
+  assertDraftBelongsToSeries(input.series, fixedDraft);
+  assertChapterIsDistributed(fixedDraft.id, input.takedown);
+  assertPublishableDraft(fixedDraft);
 
   return createPublishedSnapshot({
-    draft: input.fixedDraft,
+    draft: fixedDraft,
     actor: input.actor,
     lineage: input.lineage,
     ...(input.publishedAt ? { publishedAt: input.publishedAt } : {}),
-    version: input.previousSnapshot.version + 1,
+    version: previousSnapshot.version + 1,
+    revision: {
+      supersedesSnapshotId: previousSnapshot.id,
+      reason: input.reason,
+    },
   });
+}
+
+/** Stopping distribution is its own authority, held apart from publishing. */
+export function assertStaffMayTakeDownChapter(
+  principal: RequestPrincipal,
+): asserts principal is StaffPrincipal {
+  assertStaffPermission(principal, "chapter:takedown");
+}
+
+/**
+ * Stops distributing a published Chapter, without touching what it published.
+ *
+ * The Published Snapshot is taken as evidence rather than as something to
+ * change: the takedown names it, and everything the Chapter ever published
+ * stays on the record. Reason and actor are required because a takedown is a
+ * decision somebody has to answer for — a legal complaint, a policy breach —
+ * and one with neither would be indistinguishable from content going missing.
+ */
+export function takeDownPublishedChapter(input: {
+  snapshot: PublishedSnapshot;
+  actor: RequestPrincipal;
+  reason: string;
+  takenDownAt: string;
+}): ChapterTakedown {
+  assertStaffMayTakeDownChapter(input.actor);
+
+  if (!input.reason?.trim()) {
+    throw new Error("a takedown requires the reason distribution stopped");
+  }
+
+  if (Number.isNaN(Date.parse(input.takenDownAt))) {
+    throw new Error("a takedown needs the time distribution stopped");
+  }
+
+  return Object.freeze({
+    seriesId: input.snapshot.seriesId,
+    chapterId: input.snapshot.chapterId,
+    snapshotId: input.snapshot.id,
+    reason: input.reason,
+    takenDownByStaffAccountId: input.actor.staffAccountId,
+    takenDownAt: input.takenDownAt,
+  });
+}
+
+/** Whether this Chapter is one NovelX is still willing to put in front of readers. */
+function assertChapterIsDistributed(
+  chapterId: string,
+  takedown: ChapterTakedown | undefined,
+): void {
+  if (takedown) {
+    throw new PublicationRefusedError(
+      "chapter-under-takedown",
+      `distribution of Chapter ${chapterId} has been stopped: ${takedown.reason}`,
+    );
+  }
 }
 
 /**
@@ -1602,6 +1759,7 @@ function createPublishedSnapshot(input: {
   lineage: readonly ProvenanceEntry[];
   publishedAt?: string;
   version: number;
+  revision?: PublishedSnapshotRevision;
 }): PublishedSnapshot {
   const { draft } = input;
   const traced = tracedLineageEntry(draft, input.lineage);
@@ -1628,7 +1786,7 @@ function createPublishedSnapshot(input: {
     rightsRecordIds: Object.freeze(publishingRightsGrants(draft)),
     publishedAt: input.publishedAt ?? new Date().toISOString(),
     publishedByStaffAccountId: input.actor.staffAccountId,
-    publiclyReadable: true,
+    ...(input.revision ? { revision: Object.freeze(input.revision) } : {}),
   });
 }
 

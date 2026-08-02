@@ -57,8 +57,12 @@ A chapter being written in the staff CMS: prose attached to a governed series, a
 _Avoid_: unpublished chapter, private chapter, chapter revision
 
 **Published Snapshot**:
-The immutable public version of a chapter produced by a publishing action. It carries what made it publishable rather than a claim to have been: every Rights Record that cleared the chapter for publishing, and the Provenance Ledger entry its content traced when it went public. Post-publication fixes create a new revision while preserving the previous snapshot internally with reason, actor, audit trail, and related ticket.
+The immutable public version of a chapter produced by a publishing action. It carries what made it publishable rather than a claim to have been: every Rights Record that cleared the chapter for publishing, and the Provenance Ledger entry its content traced when it went public. A post-publication fix is a revision: a further version rather than a change to this one, naming the snapshot it replaced and the reason it replaced it, so every version a chapter ever published stays on the record with the accountable staff account beside it. Whether readers can open it is a separate question, answered by the Chapter Takedown record and never by a field here.
 _Avoid_: live chapter body, mutable page content
+
+**Chapter Takedown**:
+A decision to stop distributing a published chapter, and the record of who took it and why. A takedown blocks distribution without deleting or editing anything: it names the Published Snapshot that was public when distribution stopped, and that snapshot stays exactly as readers saw it. It is held apart from publishing as its own authority, because a legal complaint or a policy breach is not an editorial decision. It applies to the chapter rather than to one version, so a later revision cannot walk a taken-down chapter back out, and what the series has published stays true for sequencing even while readers cannot open it.
+_Avoid_: unpublish, delete chapter, hide flag
 
 **Publication Schedule**:
 When an approved Chapter is due to become public, and who put it there. A schedule is an intention rather than a publication: only a chapter that could be published now can be scheduled, publishing before its time is refused, and nothing publishes on its own. The order chapters go out in is not settled here — publishing is in sequence, read from the chapters readers can already see.

@@ -12,6 +12,7 @@ import {
   createSeries,
   createStoryBible,
   lockStoryBible,
+  reviseChapterDraft,
   seriesProvenance,
   storyBibleProvenance,
   updateSeries,
@@ -295,6 +296,64 @@ export class StaffCmsService {
   }
 
   /**
+   * Rewrites the prose of a draft Chapter, which is how a post-publication fix
+   * starts: the fix is new prose, and new prose has to earn its Quality Gate
+   * result and its approval again before it can reach readers.
+   *
+   * A rewrite that changes nothing leaves no lineage, because a line of lineage
+   * for a change that did not happen says the Chapter was edited when it was
+   * not.
+   */
+  async reviseChapterDraft(input: {
+    principal: RequestPrincipal;
+    seriesId: string;
+    chapterId: string;
+    title?: unknown;
+    body?: unknown;
+  }): Promise<ChapterDraft> {
+    return this.gate.run(
+      input.principal,
+      {
+        action: "staff.chapter-draft.revise",
+        target: staffAuditTarget("chapter-draft", input.chapterId),
+        permission: "chapter:write",
+      },
+      async (actor) => {
+        const title = optionalText(input.title, "title");
+        const body = optionalText(input.body, "body");
+
+        if (title === undefined && body === undefined) {
+          throw new BadRequestException(
+            "revising a draft Chapter needs a title, prose, or both",
+          );
+        }
+
+        const draft = await requireChapterDraft(this.staffCmsRepository, input);
+        const revised = domainRule(() =>
+          reviseChapterDraft({
+            draft,
+            ...(title === undefined ? {} : { title }),
+            ...(body === undefined ? {} : { body }),
+          }),
+        );
+
+        if (revised === draft) {
+          return draft;
+        }
+
+        await this.staffCmsRepository.saveChapterDraft(revised);
+        await this.provenanceRecorder.record({
+          actor,
+          action: "chapter-draft.revise",
+          subject: chapterDraftProvenance(revised),
+        });
+
+        return revised;
+      },
+    );
+  }
+
+  /**
    * Attaches material to the workflow carrying a draft Chapter, if a Rights
    * Record covers that use of it.
    *
@@ -391,4 +450,21 @@ export class StaffCmsService {
       permission: "canon:write",
     };
   }
+}
+
+/**
+ * A field a revision may leave out. Omitted means "leave it as it is", which is
+ * why an empty string is not the same answer: it is a rewrite to nothing, and
+ * the domain refuses it rather than this reading it as silence.
+ */
+function optionalText(value: unknown, field: string): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== "string") {
+    throw new BadRequestException(`${field} must be text`);
+  }
+
+  return value;
 }

@@ -5,7 +5,6 @@ create table if not exists series (
   creative_disclosure text not null check (creative_disclosure in ('Human', 'Hybrid', 'AI-Assisted')),
   taxonomy jsonb not null,
   status text not null check (status in ('draft', 'active', 'completed', 'hiatus')),
-  takedown_state text not null default 'available',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -91,8 +90,30 @@ create table if not exists published_snapshots (
   rights_record_ids jsonb not null,
   published_at timestamptz not null,
   published_by_staff_account_id text not null,
-  publicly_readable boolean not null default true,
-  unique (chapter_id, version)
+  -- Why this version replaced the one before it. A first publication replaced
+  -- nothing and has nothing to explain; every later version does.
+  supersedes_snapshot_id text references published_snapshots(id),
+  revision_reason text,
+  unique (chapter_id, version),
+  check ((supersedes_snapshot_id is null) = (revision_reason is null)),
+  check ((version = 1) = (supersedes_snapshot_id is null))
+);
+
+-- A published Chapter NovelX has stopped distributing, and why. Deliberately a
+-- record of its own rather than a flag on published_snapshots: a snapshot is
+-- immutable (ADR-0003), so what readers saw stays exactly as they saw it and
+-- the takedown is the only thing that changed. Nothing here deletes a snapshot.
+--
+-- Keyed by Chapter rather than by snapshot, so a Chapter that has been taken
+-- down stays dark and a later version cannot quietly walk back out.
+create table if not exists chapter_takedowns (
+  chapter_id text primary key,
+  series_id text not null references series(id),
+  -- The Published Snapshot that was public when distribution stopped.
+  snapshot_id text not null references published_snapshots(id),
+  reason text not null check (length(btrim(reason)) > 0),
+  taken_down_by_staff_account_id text not null,
+  taken_down_at timestamptz not null
 );
 
 -- When an approved Chapter is due to become public. An intention rather than a
@@ -108,8 +129,7 @@ create table if not exists chapter_publication_schedules (
 );
 
 create index if not exists published_snapshots_public_lookup_idx
-  on published_snapshots (series_id, chapter_id, version desc)
-  where publicly_readable = true;
+  on published_snapshots (series_id, chapter_id, version desc);
 
 -- How content and AI workflow artifacts were created, evaluated, edited,
 -- approved, revised, and published (ADR-0008). Append-only: nothing in the

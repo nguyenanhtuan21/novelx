@@ -163,7 +163,6 @@ describe("publishing an approved Chapter", () => {
 
     assert.equal(snapshot.body, draft.body);
     assert.equal(snapshot.version, 1);
-    assert.equal(snapshot.publiclyReadable, true);
     assert.equal(snapshot.publishedByStaffAccountId, "staff-publisher-1");
     assert.throws(() => {
       (snapshot as { body: string }).body = "rewritten in place";
@@ -338,7 +337,7 @@ describe("Publication Schedule", () => {
       schedule: scheduledFor(draft, PUBLISHED_AT),
     });
 
-    assert.equal(snapshot.publiclyReadable, true);
+    assert.equal(snapshot.publishedAt, PUBLISHED_AT);
   });
 
   it("refuses a schedule that belongs to another Chapter", () => {

@@ -5,18 +5,14 @@ import type { PublishingRepository } from "./publishing.repository.js";
 import type { StaffCmsRepository } from "./staff-cms.repository.js";
 
 /**
- * The public catalog, read as what it is: the governed Series that have a
- * Published Snapshot.
+ * The public catalog, read as what it is: the governed Series with a Chapter
+ * NovelX is currently distributing.
  *
  * Nothing here marks a Series public. A Series becomes readable by having a
- * Chapter published and stops being readable by not having one, so there is no
- * flag to fall out of step with what readers can actually open.
- *
- * The Postgres catalog additionally hides a Series under takedown, which this
- * cannot: takedown is a column with no term in the domain yet, and it belongs
- * to the takedown ticket that will give it one. Until then a deployment without
- * a database has no takedown, rather than a takedown that silently does
- * nothing.
+ * Chapter readers can open and stops being readable by not having one — whether
+ * because nothing was published or because everything published was taken down
+ * — so there is no flag to fall out of step with what readers can actually
+ * open.
  */
 export class PublishedCatalogRepository implements CatalogRepository {
   constructor(
@@ -28,7 +24,7 @@ export class PublishedCatalogRepository implements CatalogRepository {
     const governed = await this.staffCmsRepository.listSeries();
     const catalog = await Promise.all(
       governed.map(async (series) => {
-        const [first] = await this.publishingRepository.listPublishedChapters(
+        const [first] = await this.publishingRepository.listDistributedChapters(
           series.id,
         );
 
@@ -45,6 +41,6 @@ export class PublishedCatalogRepository implements CatalogRepository {
     seriesId: string;
     chapterId: string;
   }): Promise<PublishedSnapshot | undefined> {
-    return this.publishingRepository.findPublishedChapter(input);
+    return this.publishingRepository.findDistributedChapter(input);
   }
 }

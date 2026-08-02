@@ -6,6 +6,7 @@ import {
   createReaderPrincipal,
   type ChapterDraft,
   type ChapterPublicationSchedule,
+  type ChapterTakedown,
   type ManagedTaxonomy,
   type ProvenanceEntry,
   type PublicCatalogSeries,
@@ -19,12 +20,14 @@ import { signReaderSessionToken } from "./reader-session-token.js";
 const editorCredential = "staff-editor-1-access-credential";
 const reviewerCredential = "staff-reviewer-1-access-credential";
 const publisherCredential = "staff-publisher-1-access-credential";
+const moderatorCredential = "staff-moderator-1-access-credential";
 const readerSecret = "reader-session-secret-for-tests";
 
 /**
- * Three Staff Accounts, because publishing is where the separations matter:
- * writing the prose, taking accountability for it, and putting it in front of
- * readers are three authorities, and no account here holds two of them.
+ * Four Staff Accounts, because publishing is where the separations matter:
+ * writing the prose, taking accountability for it, putting it in front of
+ * readers, and taking it back away are four authorities, and no account here
+ * holds two of them.
  */
 const staffAccounts = JSON.stringify([
   {
@@ -55,6 +58,13 @@ const staffAccounts = JSON.stringify([
     permissions: ["series:read", "chapter:publish"],
     credentialSha256: createHash("sha256")
       .update(publisherCredential)
+      .digest("hex"),
+  },
+  {
+    id: "staff-moderator-1",
+    permissions: ["series:read", "chapter:takedown"],
+    credentialSha256: createHash("sha256")
+      .update(moderatorCredential)
       .digest("hex"),
   },
 ]);
@@ -111,6 +121,11 @@ const reportedChecks: readonly ReportedQualityCheck[] = [
 const LONG_AFTER = "2099-01-01T00:00:00.000Z";
 const LONG_AGO = "2026-01-02T00:00:00.000Z";
 
+const ORIGINAL_BODY = "Mưa rơi trên mái ngõ, và một lời thề cũ được nhắc lại.";
+const FIXED_BODY = "Mưa rơi trên mái ngói, và một lời thề cũ được nhắc lại.";
+const FIX_REASON = "Sửa tên nhân vật sai trong đoạn cuối (ticket EDIT-101)";
+const TAKEDOWN_REASON = "Khiếu nại bản quyền từ chủ sở hữu (ticket LEGAL-7)";
+
 beforeEach(() => {
   delete process.env.DATABASE_URL;
   process.env.STAFF_ACCOUNTS = staffAccounts;
@@ -142,7 +157,6 @@ describe("publishing an approved Chapter", () => {
 
       assert.equal(published.status, 201);
       assert.equal(published.body.version, 1);
-      assert.equal(published.body.publiclyReadable, true);
       assert.deepEqual(published.body.rightsRecordIds, ["rights-publishing-1"]);
       assert.equal(
         published.body.publishedByStaffAccountId,
@@ -582,10 +596,344 @@ describe("what approving and publishing leave behind", () => {
   });
 });
 
+describe("revising a published Chapter", () => {
+  /**
+   * The whole point of ADR-0003: a fix is a further version, and the version
+   * readers actually saw is still there afterwards, word for word.
+   */
+  it("publishes a further version and keeps what readers saw on the record", async () => {
+    await withApi(async (api) => {
+      const staff = await staffSessions(api);
+      await publishedChapter(api, staff);
+      const first = await publicationRecord(api, staff);
+      await rewriteAndReapprove(api, staff);
+
+      const revised = await api<PublishedSnapshot>(
+        "POST",
+        revisionPath("chuong-pub-1"),
+        { headers: staff.publisher, body: { reason: FIX_REASON } },
+      );
+
+      assert.equal(revised.status, 201, JSON.stringify(revised.body));
+      assert.equal(revised.body.version, 2);
+      assert.equal(revised.body.body, FIXED_BODY);
+      assert.deepEqual(revised.body.revision, {
+        supersedesSnapshotId: first.versions[0]?.id,
+        reason: FIX_REASON,
+      });
+
+      const record = await publicationRecord(api, staff);
+      assert.deepEqual(
+        record.versions.map((version) => version.version),
+        [2, 1],
+      );
+      assert.equal(record.versions[1]?.body, ORIGINAL_BODY);
+      assert.equal(record.versions[1]?.id, first.versions[0]?.id);
+
+      const read = await api<{ body: string; version: number }>(
+        "GET",
+        publicChapterPath("chuong-pub-1"),
+      );
+      assert.equal(read.body.version, 2);
+      assert.equal(read.body.body, FIXED_BODY);
+    });
+  });
+
+  it("refuses a fix nobody explained", async () => {
+    await withApi(async (api) => {
+      const staff = await staffSessions(api);
+      await publishedChapter(api, staff);
+      await rewriteAndReapprove(api, staff);
+
+      const silent = await api("POST", revisionPath("chuong-pub-1"), {
+        headers: staff.publisher,
+        body: {},
+      });
+
+      assert.equal(silent.status, 400);
+    });
+  });
+
+  it("refuses a fix to a Chapter nobody published", async () => {
+    await withApi(async (api) => {
+      const staff = await staffSessions(api);
+      await governedSeries(api, staff);
+      await approvedChapter(api, staff, {
+        id: "chuong-pub-1",
+        chapterNumber: 1,
+      });
+
+      const refused = await api<{ error: string }>(
+        "POST",
+        revisionPath("chuong-pub-1"),
+        { headers: staff.publisher, body: { reason: FIX_REASON } },
+      );
+
+      assert.equal(refused.status, 409);
+      assert.equal(refused.body.error, "chapter-not-published");
+    });
+  });
+
+  /** A fix is new prose, so it goes back through the gate and the reviewer. */
+  it("refuses a fix whose prose nobody re-approved", async () => {
+    await withApi(async (api) => {
+      const staff = await staffSessions(api);
+      await publishedChapter(api, staff);
+      await api("PUT", draftPath("chuong-pub-1"), {
+        headers: staff.editor,
+        body: { body: FIXED_BODY },
+      });
+
+      const refused = await api<{ error: string }>(
+        "POST",
+        revisionPath("chuong-pub-1"),
+        { headers: staff.publisher, body: { reason: FIX_REASON } },
+      );
+
+      assert.equal(refused.status, 409);
+      assert.equal(refused.body.error, "quality-gate-blocked");
+    });
+  });
+
+  it("refuses a fix from an account that may not publish", async () => {
+    await withApi(async (api) => {
+      const staff = await staffSessions(api);
+      await publishedChapter(api, staff);
+      await rewriteAndReapprove(api, staff);
+
+      const refused = await api("POST", revisionPath("chuong-pub-1"), {
+        headers: staff.reviewer,
+        body: { reason: FIX_REASON },
+      });
+
+      assert.equal(refused.status, 403);
+    });
+  });
+});
+
+describe("taking a published Chapter down", () => {
+  it("stops distribution without deleting what was published", async () => {
+    await withApi(async (api) => {
+      const staff = await staffSessions(api);
+      await publishedChapter(api, staff);
+
+      const takedown = await api<ChapterTakedown>(
+        "POST",
+        takedownPath("chuong-pub-1"),
+        { headers: staff.moderator, body: { reason: TAKEDOWN_REASON } },
+      );
+
+      assert.equal(takedown.status, 201, JSON.stringify(takedown.body));
+      assert.equal(takedown.body.reason, TAKEDOWN_REASON);
+      assert.equal(
+        takedown.body.takenDownByStaffAccountId,
+        "staff-moderator-1",
+      );
+
+      const read = await api("GET", publicChapterPath("chuong-pub-1"));
+      assert.equal(
+        read.status,
+        404,
+        "readers cannot open a Chapter taken down",
+      );
+
+      const catalog = await api<PublicCatalogSeries[]>(
+        "GET",
+        "/catalog/series",
+      );
+      assert.equal(
+        catalog.body.some((series) => series.id === seriesId),
+        false,
+        "a Series whose only Chapter is down is not in the public catalog",
+      );
+
+      const record = await publicationRecord(api, staff);
+      assert.equal(record.versions.length, 1);
+      assert.equal(record.versions[0]?.body, ORIGINAL_BODY);
+      assert.equal(record.takedown?.snapshotId, record.versions[0]?.id);
+      assert.equal(record.takedown?.reason, TAKEDOWN_REASON);
+    });
+  });
+
+  /** Like an approval: a second one must not move the accountability. */
+  it("keeps the Staff Account that first stopped distribution", async () => {
+    await withApi(async (api) => {
+      const staff = await staffSessions(api);
+      await publishedChapter(api, staff);
+      const first = await api<ChapterTakedown>(
+        "POST",
+        takedownPath("chuong-pub-1"),
+        { headers: staff.moderator, body: { reason: TAKEDOWN_REASON } },
+      );
+
+      const again = await api<ChapterTakedown>(
+        "POST",
+        takedownPath("chuong-pub-1"),
+        { headers: staff.moderator, body: { reason: "một lý do khác" } },
+      );
+
+      assert.equal(again.status, 201);
+      assert.deepEqual(again.body, first.body);
+    });
+  });
+
+  it("refuses a takedown nobody explained, and one from an account that may only publish", async () => {
+    await withApi(async (api) => {
+      const staff = await staffSessions(api);
+      await publishedChapter(api, staff);
+
+      const silent = await api("POST", takedownPath("chuong-pub-1"), {
+        headers: staff.moderator,
+        body: {},
+      });
+      assert.equal(silent.status, 400);
+
+      const byPublisher = await api("POST", takedownPath("chuong-pub-1"), {
+        headers: staff.publisher,
+        body: { reason: TAKEDOWN_REASON },
+      });
+      assert.equal(byPublisher.status, 403);
+    });
+  });
+
+  it("refuses a takedown of a Chapter nobody published", async () => {
+    await withApi(async (api) => {
+      const staff = await staffSessions(api);
+      await governedSeries(api, staff);
+      await approvedChapter(api, staff, {
+        id: "chuong-pub-1",
+        chapterNumber: 1,
+      });
+
+      const refused = await api<{ error: string }>(
+        "POST",
+        takedownPath("chuong-pub-1"),
+        { headers: staff.moderator, body: { reason: TAKEDOWN_REASON } },
+      );
+
+      assert.equal(refused.status, 409);
+      assert.equal(refused.body.error, "chapter-not-published");
+    });
+  });
+
+  /** Republishing would be a way around a decision somebody else took. */
+  it("refuses a fix that would put a Chapter under takedown back out", async () => {
+    await withApi(async (api) => {
+      const staff = await staffSessions(api);
+      await publishedChapter(api, staff);
+      await api("POST", takedownPath("chuong-pub-1"), {
+        headers: staff.moderator,
+        body: { reason: TAKEDOWN_REASON },
+      });
+      await rewriteAndReapprove(api, staff);
+
+      const refused = await api<{ error: string }>(
+        "POST",
+        revisionPath("chuong-pub-1"),
+        { headers: staff.publisher, body: { reason: FIX_REASON } },
+      );
+
+      assert.equal(refused.status, 409);
+      assert.equal(refused.body.error, "chapter-under-takedown");
+    });
+  });
+
+  /**
+   * Sequence is a fact about what the Series has published, not about what it
+   * is currently distributing, so taking Chapter 1 down does not freeze the
+   * Series behind it.
+   */
+  it("leaves the Series able to publish the Chapter after one taken down", async () => {
+    await withApi(async (api) => {
+      const staff = await staffSessions(api);
+      await publishedChapter(api, staff);
+      await approvedChapter(api, staff, {
+        id: "chuong-pub-2",
+        chapterNumber: 2,
+      });
+      await api("POST", takedownPath("chuong-pub-1"), {
+        headers: staff.moderator,
+        body: { reason: TAKEDOWN_REASON },
+      });
+
+      const published = await api<PublishedSnapshot>(
+        "POST",
+        publicationPath("chuong-pub-2"),
+        { headers: staff.publisher },
+      );
+
+      assert.equal(published.status, 201, JSON.stringify(published.body));
+      assert.equal(published.body.chapterNumber, 2);
+    });
+  });
+});
+
+describe("what revising and taking down leave behind", () => {
+  it("appends both to the Provenance Ledger and keeps the reason in the audit trail", async () => {
+    await withApi(async (api) => {
+      const staff = await staffSessions(api);
+      await publishedChapter(api, staff);
+      await rewriteAndReapprove(api, staff);
+      await api("POST", revisionPath("chuong-pub-1"), {
+        headers: staff.publisher,
+        body: { reason: FIX_REASON },
+      });
+      await api("POST", takedownPath("chuong-pub-1"), {
+        headers: staff.moderator,
+        body: { reason: TAKEDOWN_REASON },
+      });
+
+      const lineage = await seriesLineage(api, staff.editor);
+      const revision = lineage.find(
+        (entry) => entry.action === "published-snapshot.revise",
+      );
+      const takedown = lineage.find(
+        (entry) => entry.action === "published-snapshot.takedown",
+      );
+
+      assert.deepEqual(revision?.source, {
+        kind: "staff",
+        staffAccountId: "staff-publisher-1",
+      });
+      assert.deepEqual(
+        revision?.version.kind === "published-snapshot"
+          ? [revision.version.chapterId, revision.version.version]
+          : undefined,
+        ["chuong-pub-1", 2],
+      );
+      assert.deepEqual(takedown?.source, {
+        kind: "staff",
+        staffAccountId: "staff-moderator-1",
+      });
+
+      const auditLog = await api<{
+        records: { action: string; reason?: string }[];
+      }>("GET", "/staff/audit-log", { headers: staff.editor });
+      const reasons = auditLog.body.records
+        .filter((record) =>
+          [
+            "staff.published-chapter.revise",
+            "staff.published-chapter.takedown",
+          ].includes(record.action),
+        )
+        .map((record) => record.reason);
+
+      assert.deepEqual(reasons.sort(), [FIX_REASON, TAKEDOWN_REASON].sort());
+    });
+  });
+});
+
 type StaffSessions = {
   editor: Record<string, string>;
   reviewer: Record<string, string>;
   publisher: Record<string, string>;
+  moderator: Record<string, string>;
+};
+
+type PublicationRecord = {
+  chapterId: string;
+  versions: PublishedSnapshot[];
+  takedown?: ChapterTakedown;
 };
 
 type ChapterFixture = { id: string; chapterNumber: number };
@@ -623,7 +971,7 @@ async function authorDraft(
         id: chapter.id,
         chapterNumber: chapter.chapterNumber,
         title: `Mùi Mưa Thứ ${chapter.chapterNumber}`,
-        body: "Mưa rơi trên mái ngõ, và một lời thề cũ được nhắc lại.",
+        body: ORIGINAL_BODY,
       },
     },
   );
@@ -656,6 +1004,66 @@ async function gatedChapter(
   );
 
   assert.equal(run.status, 201, JSON.stringify(run.body));
+}
+
+/** A Chapter readers can already open, which is where a fix starts. */
+async function publishedChapter(
+  api: ApiClient,
+  staff: StaffSessions,
+): Promise<void> {
+  await governedSeries(api, staff);
+  await approvedChapter(api, staff, { id: "chuong-pub-1", chapterNumber: 1 });
+  const published = await api("POST", publicationPath("chuong-pub-1"), {
+    headers: staff.publisher,
+  });
+
+  assert.equal(published.status, 201, JSON.stringify(published.body));
+}
+
+/**
+ * A post-publication fix as an editorial team makes one: the prose is
+ * rewritten, which costs the draft its gate result and its approval, so both
+ * are earned again before the fix reaches the publishing door.
+ */
+async function rewriteAndReapprove(
+  api: ApiClient,
+  staff: StaffSessions,
+): Promise<void> {
+  const rewritten = await api<ChapterDraft>("PUT", draftPath("chuong-pub-1"), {
+    headers: staff.editor,
+    body: { body: FIXED_BODY },
+  });
+  assert.equal(rewritten.status, 200, JSON.stringify(rewritten.body));
+  assert.equal(rewritten.body.qualityGate, undefined);
+  assert.equal(rewritten.body.humanApproval, undefined);
+
+  const run = await api(
+    "POST",
+    `/staff/series/${seriesId}/chapters/chuong-pub-1/quality-gate`,
+    { headers: staff.editor, body: { reportedChecks } },
+  );
+  assert.equal(run.status, 201, JSON.stringify(run.body));
+
+  const approved = await api("POST", approvalPath("chuong-pub-1"), {
+    headers: staff.reviewer,
+  });
+  assert.equal(approved.status, 201, JSON.stringify(approved.body));
+}
+
+/** Everything NovelX has published of one Chapter, and whether it is down. */
+async function publicationRecord(
+  api: ApiClient,
+  staff: StaffSessions,
+): Promise<PublicationRecord> {
+  const read = await api<PublicationRecord>(
+    "GET",
+    publicationPath("chuong-pub-1"),
+    { headers: staff.publisher },
+  );
+
+  assert.equal(read.status, 200, JSON.stringify(read.body));
+
+  return read.body;
 }
 
 /** The same draft, with an accountable reviewer's approval on it. */
@@ -700,14 +1108,31 @@ function publicationPath(chapterId: string): string {
   return `/staff/series/${seriesId}/chapters/${chapterId}/publication`;
 }
 
+function revisionPath(chapterId: string): string {
+  return `/staff/series/${seriesId}/chapters/${chapterId}/revision`;
+}
+
+function takedownPath(chapterId: string): string {
+  return `/staff/series/${seriesId}/chapters/${chapterId}/takedown`;
+}
+
+function draftPath(chapterId: string): string {
+  return `/staff/series/${seriesId}/chapters/${chapterId}`;
+}
+
+function publicChapterPath(chapterId: string): string {
+  return `/catalog/series/${seriesId}/chapters/${chapterId}`;
+}
+
 async function staffSessions(api: ApiClient): Promise<StaffSessions> {
-  const [editor, reviewer, publisher] = await Promise.all([
+  const [editor, reviewer, publisher, moderator] = await Promise.all([
     staffHeaders(api, "staff-editor-1", editorCredential),
     staffHeaders(api, "staff-reviewer-1", reviewerCredential),
     staffHeaders(api, "staff-publisher-1", publisherCredential),
+    staffHeaders(api, "staff-moderator-1", moderatorCredential),
   ]);
 
-  return { editor, reviewer, publisher };
+  return { editor, reviewer, publisher, moderator };
 }
 
 async function staffHeaders(

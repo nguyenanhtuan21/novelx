@@ -27,6 +27,7 @@ const staffAccounts = JSON.stringify([
       "series:read",
       "canon:write",
       "chapter:write",
+      "provenance:read",
       "audit:read",
     ],
     credentialSha256: createHash("sha256")
@@ -510,6 +511,66 @@ describe("draft Chapter in the staff CMS", () => {
     });
   });
 
+  it("rewrites a draft's prose, and refuses a rewrite that empties it", async () => {
+    await withApi(async (api) => {
+      const headers = await editorHeaders(api);
+      await authoredDraft(api, headers);
+
+      const revised = await api<ChapterDraft>("PUT", draftPath, {
+        headers,
+        body: { body: "Mưa rơi trên mái ngói." },
+      });
+
+      assert.equal(revised.status, 200, JSON.stringify(revised.body));
+      assert.equal(revised.body.body, "Mưa rơi trên mái ngói.");
+      assert.equal(revised.body.title, "Mùi Mưa Đầu Tiên");
+
+      const emptied = await api("PUT", draftPath, {
+        headers,
+        body: { body: "   " },
+      });
+
+      assert.equal(emptied.status, 400);
+    });
+  });
+
+  it("refuses a rewrite that names neither a title nor prose", async () => {
+    await withApi(async (api) => {
+      const headers = await editorHeaders(api);
+      await authoredDraft(api, headers);
+
+      const nothing = await api("PUT", draftPath, { headers, body: {} });
+
+      assert.equal(nothing.status, 400);
+    });
+  });
+
+  it("keeps a rewrite that changes nothing out of the Provenance Ledger", async () => {
+    await withApi(async (api) => {
+      const headers = await editorHeaders(api);
+      await authoredDraft(api, headers);
+
+      const unchanged = await api<ChapterDraft>("PUT", draftPath, {
+        headers,
+        body: { body: "Mưa rơi trên mái ngõ." },
+      });
+      assert.equal(unchanged.status, 200);
+
+      const lineage = await api<{ entries: { action: string }[] }>(
+        "GET",
+        "/staff/series/series-cms-1/provenance",
+        { headers },
+      );
+
+      assert.equal(
+        lineage.body.entries.filter(
+          (entry) => entry.action === "chapter-draft.revise",
+        ).length,
+        0,
+      );
+    });
+  });
+
   it("refuses a reader session the CMS write", async () => {
     await withApi(async (api) => {
       const headers = await editorHeaders(api);
@@ -534,6 +595,27 @@ describe("draft Chapter in the staff CMS", () => {
     });
   });
 });
+
+const draftPath = "/staff/series/series-cms-1/chapters/chuong-cms-1";
+
+/** A governed Series holding one authored draft Chapter. */
+async function authoredDraft(
+  api: ApiClient,
+  headers: Record<string, string>,
+): Promise<void> {
+  await api("POST", "/staff/series", { headers, body: seriesBody });
+  const authored = await api("POST", "/staff/series/series-cms-1/chapters", {
+    headers,
+    body: {
+      id: "chuong-cms-1",
+      chapterNumber: 1,
+      title: "Mùi Mưa Đầu Tiên",
+      body: "Mưa rơi trên mái ngõ.",
+    },
+  });
+
+  assert.equal(authored.status, 201, JSON.stringify(authored.body));
+}
 
 /** Signs in as the editor and returns the staff header its session travels on. */
 async function editorHeaders(api: ApiClient): Promise<Record<string, string>> {
