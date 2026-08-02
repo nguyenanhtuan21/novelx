@@ -252,7 +252,7 @@ describe("workflow material without a Rights Record", () => {
       for (const use of ["ai-workflow", "publishing"]) {
         const refused = await api<{ error: string }>(
           "POST",
-          "/staff/series/series-cms-1/chapters/chuong-1/materials",
+          "/staff/series/series-cms-1/chapters/chuong-cms-1/materials",
           { headers, body: { ...attachAiUse, use } },
         );
 
@@ -278,7 +278,7 @@ describe("workflow material without a Rights Record", () => {
 
       const refused = await api<{ error: string }>(
         "POST",
-        "/staff/series/series-cms-1/chapters/chuong-1/materials",
+        "/staff/series/series-cms-1/chapters/chuong-cms-1/materials",
         { headers, body: attachAiUse },
       );
 
@@ -300,7 +300,7 @@ describe("workflow material a Rights Record covers", () => {
 
       const attached = await api<ChapterDraft>(
         "POST",
-        "/staff/series/series-cms-1/chapters/chuong-1/materials",
+        "/staff/series/series-cms-1/chapters/chuong-cms-1/materials",
         { headers, body: attachAiUse },
       );
       assert.equal(attached.status, 201);
@@ -335,7 +335,7 @@ describe("workflow material a Rights Record covers", () => {
 
       const refused = await api<{ error: string; rightsRecordId: string }>(
         "POST",
-        "/staff/series/series-cms-1/chapters/chuong-1/materials",
+        "/staff/series/series-cms-1/chapters/chuong-cms-1/materials",
         { headers, body: attachAiUse },
       );
 
@@ -357,7 +357,7 @@ describe("workflow material a Rights Record covers", () => {
 
       const refused = await api<{ error: string }>(
         "POST",
-        "/staff/series/series-cms-1/chapters/chuong-1/materials",
+        "/staff/series/series-cms-1/chapters/chuong-cms-1/materials",
         { headers, body: { ...attachAiUse, modifies: true } },
       );
 
@@ -395,7 +395,7 @@ describe("workflow material a Rights Record covers", () => {
 
       const attached = await api<ChapterDraft>(
         "POST",
-        "/staff/series/series-cms-1/chapters/chuong-1/materials",
+        "/staff/series/series-cms-1/chapters/chuong-cms-1/materials",
         { headers, body: attachAiUse },
       );
 
@@ -430,7 +430,7 @@ describe("workflow material a Rights Record covers", () => {
 
       const refused = await api<{ rightsRecordId: string }>(
         "POST",
-        "/staff/series/series-cms-1/chapters/chuong-1/materials",
+        "/staff/series/series-cms-1/chapters/chuong-cms-1/materials",
         { headers, body: attachAiUse },
       );
 
@@ -446,7 +446,7 @@ describe("workflow material a Rights Record covers", () => {
 
       const again = await api<{ error: string }>(
         "POST",
-        "/staff/series/series-cms-1/chapters/chuong-1/materials",
+        "/staff/series/series-cms-1/chapters/chuong-cms-1/materials",
         { headers, body: attachAiUse },
       );
 
@@ -469,7 +469,7 @@ describe("workflow material a Rights Record covers", () => {
       ]) {
         const refused = await api(
           "POST",
-          "/staff/series/series-cms-1/chapters/chuong-1/materials",
+          "/staff/series/series-cms-1/chapters/chuong-cms-1/materials",
           { headers, body: { ...attachAiUse, ...incomplete } },
         );
 
@@ -500,7 +500,7 @@ describe("workflow material a Rights Record covers", () => {
 
       const refused = await api<{ error: string }>(
         "POST",
-        "/staff/series/series-cms-1/chapters/chuong-1/materials",
+        "/staff/series/series-cms-1/chapters/chuong-cms-1/materials",
         {
           headers: readerHeaders(),
           body: { ...attachAiUse, use: "publishing" },
@@ -517,7 +517,7 @@ describe("workflow material a Rights Record covers", () => {
         readerAccountId: "reader-1",
       });
       assert.equal(refusal?.action, "staff.chapter-draft.attach-material");
-      assert.equal(refusal?.target, "chapter-draft:chuong-1");
+      assert.equal(refusal?.target, "chapter-draft:chuong-cms-1");
     });
   });
 });
@@ -531,7 +531,7 @@ async function draftChapter(
   await api("POST", "/staff/series/series-cms-1/chapters", {
     headers,
     body: {
-      id: "chuong-1",
+      id: "chuong-cms-1",
       chapterNumber: 1,
       title: "Mùi Mưa Đầu Tiên",
       body: "Mưa rơi trên mái ngõ.",
@@ -549,10 +549,14 @@ async function clearedMaterial(
     headers,
     body: rightsRecordBody,
   });
-  await api("POST", "/staff/series/series-cms-1/chapters/chuong-1/materials", {
-    headers,
-    body: attachAiUse,
-  });
+  await api(
+    "POST",
+    "/staff/series/series-cms-1/chapters/chuong-cms-1/materials",
+    {
+      headers,
+      body: attachAiUse,
+    },
+  );
 }
 
 async function workflowMaterials(

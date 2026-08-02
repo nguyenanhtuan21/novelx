@@ -84,12 +84,27 @@ create table if not exists published_snapshots (
   body text not null,
   version integer not null check (version > 0),
   creative_disclosure text not null check (creative_disclosure in ('Human', 'Hybrid', 'AI-Assisted')),
+  -- The lineage entry the content traced when it went public.
   provenance_ledger_entry_id text not null,
-  rights_record_id text not null,
+  -- Every grant that cleared this Chapter for publishing, not just one: a
+  -- Chapter routinely draws on several licensed materials.
+  rights_record_ids jsonb not null,
   published_at timestamptz not null,
   published_by_staff_account_id text not null,
   publicly_readable boolean not null default true,
   unique (chapter_id, version)
+);
+
+-- When an approved Chapter is due to become public. An intention rather than a
+-- publication: it holds no content, it is replaceable until the Chapter goes
+-- out, and publishing before its time is refused.
+create table if not exists chapter_publication_schedules (
+  chapter_id text primary key references chapter_drafts(id) on delete cascade,
+  series_id text not null references series(id) on delete cascade,
+  chapter_number integer not null check (chapter_number > 0),
+  scheduled_for timestamptz not null,
+  scheduled_by_staff_account_id text not null,
+  scheduled_at timestamptz not null
 );
 
 create index if not exists published_snapshots_public_lookup_idx

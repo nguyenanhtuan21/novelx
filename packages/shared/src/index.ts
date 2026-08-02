@@ -304,6 +304,23 @@ export type ChapterDraft = {
   };
 };
 
+/**
+ * When an approved Chapter is due to become public, and who put it there.
+ *
+ * A schedule is an intention rather than a publication: it holds the time the
+ * Chapter may go out, and publishing before then is refused. Nothing here
+ * publishes on its own — an operator or, later, a worker does the publishing,
+ * and this is what they are held to.
+ */
+export type ChapterPublicationSchedule = Readonly<{
+  seriesId: string;
+  chapterId: string;
+  chapterNumber: number;
+  scheduledFor: string;
+  scheduledByStaffAccountId: string;
+  scheduledAt: string;
+}>;
+
 export type PublishedSnapshot = Readonly<{
   id: string;
   chapterId: string;
@@ -313,12 +330,50 @@ export type PublishedSnapshot = Readonly<{
   body: string;
   version: number;
   creativeDisclosure: CreativeDisclosure;
+  /** The lineage entry this snapshot's content traced when it went public. */
   provenanceLedgerEntryId: string;
-  rightsRecordId: string;
+  /** Every grant that cleared this Chapter for publishing, not just one. */
+  rightsRecordIds: readonly string[];
   publishedAt: string;
   publishedByStaffAccountId: string;
   publiclyReadable: true;
 }>;
+
+/**
+ * What a reader may see of a Published Snapshot: the Chapter, not the making
+ * of it.
+ *
+ * The grants that cleared a Chapter, the lineage it traces, and the Staff
+ * Account that published it are how NovelX answers for the Chapter internally.
+ * They are named here by being left out, so a public read cannot serve them by
+ * a snapshot growing a field nobody thought about.
+ */
+export type PublicChapter = Pick<
+  PublishedSnapshot,
+  | "id"
+  | "chapterId"
+  | "seriesId"
+  | "chapterNumber"
+  | "title"
+  | "body"
+  | "version"
+  | "creativeDisclosure"
+  | "publishedAt"
+>;
+
+export function publicChapter(snapshot: PublishedSnapshot): PublicChapter {
+  return Object.freeze({
+    id: snapshot.id,
+    chapterId: snapshot.chapterId,
+    seriesId: snapshot.seriesId,
+    chapterNumber: snapshot.chapterNumber,
+    title: snapshot.title,
+    body: snapshot.body,
+    version: snapshot.version,
+    creativeDisclosure: snapshot.creativeDisclosure,
+    publishedAt: snapshot.publishedAt,
+  });
+}
 
 /**
  * Where a traced change came from: an accountable person, or an AI workflow
@@ -821,6 +876,14 @@ export function clearMaterialForWorkflowUse(input: {
  * Carries cleared material into a draft's workflow. It takes an attachment
  * rather than a material and a record, so there is no way to attach material
  * that did not go through the rights gate first.
+ *
+ * Attaching changes what the draft is made of, so the Quality Gate result and
+ * the Human Approval come off it. Both describe the draft as it was, and the
+ * grants a Published Snapshot names are read from these attachments: leaving
+ * them on would publish a Chapter citing a grant no run evaluated and no
+ * reviewer saw. Re-running the gate and approving again is how a draft that
+ * has changed becomes publishable, which is what makes approval mean the
+ * content rather than the Chapter's name.
  */
 export function attachWorkflowMaterial(input: {
   draft: ChapterDraft;
@@ -842,10 +905,14 @@ export function attachWorkflowMaterial(input: {
     );
   }
 
-  return {
+  const changed = {
     ...input.draft,
     workflowMaterials: [...attached, attachment],
   };
+  delete changed.qualityGate;
+  delete changed.humanApproval;
+
+  return changed;
 }
 
 function validateWorkflowMaterial(material: WorkflowMaterial): void {
@@ -1080,9 +1147,6 @@ function unreportedFinding(
 function rightsFinding(records: QualityGateRecords): QualityGateFinding {
   const { draft, chapterRightsRecord } = records;
   const condition = "rightsRecord" as const;
-  const cleared = (draft.workflowMaterials ?? [])
-    .filter((attachment) => attachment.use === "publishing")
-    .map((attachment) => attachment.rightsRecordId);
   const named = draft.rightsRecordId?.trim();
 
   if (named) {
@@ -1103,7 +1167,7 @@ function rightsFinding(records: QualityGateRecords): QualityGateFinding {
     }
   }
 
-  const grants = [...new Set([...(named ? [named] : []), ...cleared])];
+  const grants = publishingRightsGrants(draft);
 
   return grants.length > 0
     ? {
@@ -1119,6 +1183,22 @@ function rightsFinding(records: QualityGateRecords): QualityGateFinding {
 }
 
 /**
+ * The grants that clear a draft Chapter for publishing: the Rights Record it
+ * names for itself, and those that cleared the material its workflow carries
+ * for publishing use. The Quality Gate reads them to answer its rights
+ * condition and the Published Snapshot carries them, so both say the same thing
+ * about the same Chapter.
+ */
+function publishingRightsGrants(draft: ChapterDraft): readonly string[] {
+  const named = draft.rightsRecordId?.trim();
+  const cleared = (draft.workflowMaterials ?? [])
+    .filter((attachment) => attachment.use === "publishing")
+    .map((attachment) => attachment.rightsRecordId);
+
+  return [...new Set([...(named ? [named] : []), ...cleared])];
+}
+
+/**
  * Whether the Provenance Ledger can say how this draft Chapter was made. The
  * lineage has to trace this draft under this Series: entries about some other
  * artifact would answer the condition with another Chapter's history.
@@ -1126,12 +1206,7 @@ function rightsFinding(records: QualityGateRecords): QualityGateFinding {
 function provenanceFinding(records: QualityGateRecords): QualityGateFinding {
   const { draft } = records;
   const condition = "provenanceLedger" as const;
-  const traced = records.lineage.find(
-    (entry) =>
-      entry.target.kind === "chapter-draft" &&
-      entry.target.id === draft.id &&
-      entry.target.seriesId === draft.seriesId,
-  );
+  const traced = tracedLineageEntry(draft, records.lineage);
 
   return traced
     ? {
@@ -1144,6 +1219,24 @@ function provenanceFinding(records: QualityGateRecords): QualityGateFinding {
         verdict: "blocking-failure",
         note: "the Provenance Ledger holds no lineage for this draft Chapter",
       };
+}
+
+/**
+ * The line of lineage that traces this draft Chapter, out of however much of
+ * the ledger was read. Lineage arrives newest first, so the first match is the
+ * most recent one. Entries about some other artifact are no answer at all:
+ * they would hand another Chapter's history to whoever asked.
+ */
+function tracedLineageEntry(
+  draft: ChapterDraft,
+  lineage: readonly ProvenanceEntry[],
+): ProvenanceEntry | undefined {
+  return lineage.find(
+    (entry) =>
+      entry.target.kind === "chapter-draft" &&
+      entry.target.id === draft.id &&
+      entry.target.seriesId === draft.seriesId,
+  );
 }
 
 /** Whether an accountable human has approved the draft Chapter (ADR-0001). */
@@ -1198,34 +1291,222 @@ export function createChapterDraft(
   return input;
 }
 
+/**
+ * The refusals of a publishing action that name state an editor has to change
+ * or wait out, rather than a request they can correct. They are named so that
+ * "nobody approved it" and "the Chapter before it is not out yet" are different
+ * answers to whoever is trying to publish.
+ */
+/** What a Chapter is on its first publication; a fix is the version after. */
+const FIRST_PUBLISHED_VERSION = 1;
+
+export const PUBLICATION_REFUSALS = [
+  "quality-gate-blocked",
+  "human-approval-required",
+  "chapter-already-published",
+  "chapter-out-of-sequence",
+  "publication-not-due",
+] as const;
+
+export type PublicationRefusal = (typeof PUBLICATION_REFUSALS)[number];
+
+export class PublicationRefusedError extends Error {
+  constructor(
+    readonly code: PublicationRefusal,
+    message: string,
+  ) {
+    super(message);
+    this.name = "PublicationRefusedError";
+  }
+}
+
+/** Approving a Chapter is the accountability act, held apart from writing it. */
+export function assertStaffMayApproveChapter(
+  principal: RequestPrincipal,
+): asserts principal is StaffPrincipal {
+  assertStaffPermission(principal, "chapter:approve");
+}
+
+/**
+ * Records the Human Approval that ADR-0001 makes the public-publishing gate:
+ * an accountable reviewer taking responsibility for this draft Chapter.
+ *
+ * A reviewer may only answer the condition that is theirs. A draft the Quality
+ * Gate blocked for any other reason is refused here, so approval is the last
+ * condition of the gate rather than a way around the rest of it.
+ *
+ * Approving an approved draft changes nothing: the approval names who took the
+ * decision, and a second one must not move that to whoever pressed the button
+ * most recently.
+ */
+export function approveChapterDraft(input: {
+  draft: ChapterDraft;
+  actor: RequestPrincipal;
+  approvedAt: string;
+}): ChapterDraft {
+  assertStaffMayApproveChapter(input.actor);
+
+  if (isHumanApproved(input.draft)) {
+    return input.draft;
+  }
+
+  assertQualityGateCleared(input.draft);
+
+  if (Number.isNaN(Date.parse(input.approvedAt))) {
+    throw new Error(
+      "Human Approval needs the time the reviewer took the decision",
+    );
+  }
+
+  return {
+    ...input.draft,
+    humanApproval: {
+      reviewerStaffAccountId: input.actor.staffAccountId,
+      approvedAt: input.approvedAt,
+    },
+  };
+}
+
+/**
+ * Records when an approved Chapter may become public.
+ *
+ * Only a Chapter that could be published right now can be scheduled, so a
+ * schedule is a decision about *when* rather than a promise to finish the
+ * gates later. The order it goes out in is not settled here: sequence is read
+ * from what readers can already see, at the moment of publishing.
+ */
+export function scheduleChapterPublication(input: {
+  series: Series;
+  draft: ChapterDraft;
+  actor: RequestPrincipal;
+  scheduledFor: string;
+  scheduledAt: string;
+}): ChapterPublicationSchedule {
+  const { draft } = input;
+  assertStaffMayPublish(input.actor);
+  assertDraftBelongsToSeries(input.series, draft);
+  assertPublishableDraft(draft);
+
+  if (Number.isNaN(Date.parse(input.scheduledFor))) {
+    throw new Error(
+      "a Publication Schedule needs the time the Chapter becomes public",
+    );
+  }
+
+  return Object.freeze({
+    seriesId: draft.seriesId,
+    chapterId: draft.id,
+    chapterNumber: draft.chapterNumber,
+    scheduledFor: input.scheduledFor,
+    scheduledByStaffAccountId: input.actor.staffAccountId,
+    scheduledAt: input.scheduledAt,
+  });
+}
+
+/**
+ * Makes a draft Chapter public as an immutable Published Snapshot (ADR-0003).
+ *
+ * It takes the Chapter numbers readers can already see rather than a flag
+ * saying the order is fine, because publishing in sequence is a fact about the
+ * Series and not a claim the caller can make about it.
+ */
 export function publishChapter(input: {
   series: Series;
   draft: ChapterDraft;
-  actor: StaffPrincipal;
+  actor: RequestPrincipal;
+  /** The Chapter numbers of this Series that readers can already see. */
+  publishedChapterNumbers: readonly number[];
+  /** The draft's lineage as the Provenance Ledger holds it, newest first. */
+  lineage: readonly ProvenanceEntry[];
+  /** Present when this Chapter was scheduled, and it may not go out early. */
+  schedule?: ChapterPublicationSchedule;
   publishedAt?: string;
-  version?: number;
 }): PublishedSnapshot {
   const { draft } = input;
   assertStaffMayPublish(input.actor);
-
-  if (input.series.id !== draft.seriesId) {
-    throw new Error("chapter draft does not belong to the Series");
-  }
-
+  assertDraftBelongsToSeries(input.series, draft);
   assertPublishableDraft(draft);
+
+  const publishedAt = input.publishedAt ?? new Date().toISOString();
+  assertPublishesInSequence(draft, input.publishedChapterNumbers);
+  assertPublicationIsDue(draft, input.schedule, publishedAt);
 
   return createPublishedSnapshot({
     draft,
     actor: input.actor,
-    publishedAt: input.publishedAt,
-    version: input.version ?? 1,
+    lineage: input.lineage,
+    publishedAt,
+    version: FIRST_PUBLISHED_VERSION,
   });
+}
+
+function assertDraftBelongsToSeries(series: Series, draft: ChapterDraft): void {
+  if (series.id !== draft.seriesId) {
+    throw new Error("chapter draft does not belong to the Series");
+  }
+}
+
+/**
+ * Whether this Chapter is the one the Series is due next.
+ *
+ * Readers follow a Series in order, so a Chapter cannot appear before the one
+ * ahead of it, and a Chapter already published is refused rather than given a
+ * second version: a change to public text is a revision, which carries the
+ * reason this does not.
+ */
+function assertPublishesInSequence(
+  draft: ChapterDraft,
+  publishedChapterNumbers: readonly number[],
+): void {
+  const published = new Set(publishedChapterNumbers);
+
+  if (published.has(draft.chapterNumber)) {
+    throw new PublicationRefusedError(
+      "chapter-already-published",
+      `Chapter ${draft.chapterNumber} of Series ${draft.seriesId} is already published; a post-publication fix is a revision`,
+    );
+  }
+
+  for (let earlier = 1; earlier < draft.chapterNumber; earlier += 1) {
+    if (!published.has(earlier)) {
+      throw new PublicationRefusedError(
+        "chapter-out-of-sequence",
+        `Chapter ${draft.chapterNumber} cannot be published before Chapter ${earlier}`,
+      );
+    }
+  }
+}
+
+/** Whether a scheduled Chapter has reached the time it was scheduled for. */
+function assertPublicationIsDue(
+  draft: ChapterDraft,
+  schedule: ChapterPublicationSchedule | undefined,
+  publishedAt: string,
+): void {
+  if (!schedule) {
+    return;
+  }
+
+  if (schedule.chapterId !== draft.id) {
+    throw new Error(
+      `the Publication Schedule names Chapter ${schedule.chapterId}, not ${draft.id}`,
+    );
+  }
+
+  if (Date.parse(publishedAt) < Date.parse(schedule.scheduledFor)) {
+    throw new PublicationRefusedError(
+      "publication-not-due",
+      `Chapter ${draft.chapterNumber} is scheduled for ${schedule.scheduledFor}`,
+    );
+  }
 }
 
 export function revisePublishedChapter(input: {
   previousSnapshot: PublishedSnapshot;
   fixedDraft: ChapterDraft;
-  actor: StaffPrincipal;
+  actor: RequestPrincipal;
+  /** The fixed draft's lineage as the Provenance Ledger holds it. */
+  lineage: readonly ProvenanceEntry[];
   reason: string;
   publishedAt?: string;
 }): PublishedSnapshot {
@@ -1244,7 +1525,8 @@ export function revisePublishedChapter(input: {
   return createPublishedSnapshot({
     draft: input.fixedDraft,
     actor: input.actor,
-    publishedAt: input.publishedAt,
+    lineage: input.lineage,
+    ...(input.publishedAt ? { publishedAt: input.publishedAt } : {}),
     version: input.previousSnapshot.version + 1,
   });
 }
@@ -1255,50 +1537,83 @@ export function revisePublishedChapter(input: {
  * built from a draft that skipped a gate.
  */
 type PublishableChapterDraft = ChapterDraft & {
-  rightsRecordId: string;
-  provenanceLedgerEntryId: string;
   qualityGate: QualityGateResult;
 };
 
+/**
+ * Whether a draft may become public.
+ *
+ * Rights and lineage are not asked for here as strings the draft carries: they
+ * are conditions of the Quality Gate, which resolves the grants on record and
+ * the lineage the ledger holds rather than believing an id (ADR-0017). Asking
+ * for the string as well would put the weaker check last.
+ */
 function assertPublishableDraft(
   draft: ChapterDraft,
 ): asserts draft is PublishableChapterDraft {
-  if (!draft.rightsRecordId) {
-    throw new Error("Rights Record is required before public publishing");
-  }
-
-  if (!draft.provenanceLedgerEntryId) {
-    throw new Error(
-      "Provenance Ledger entry is required before public publishing",
-    );
-  }
-
-  if (!draft.qualityGate) {
-    throw new Error(
-      "Quality Gate evaluation is required before public publishing",
-    );
-  }
-
-  if (draft.qualityGate.blockingFailures.length > 0) {
-    throw new Error(
-      `blocking Quality Gate failure: ${draft.qualityGate.blockingFailures.join(", ")}`,
-    );
-  }
+  assertQualityGateCleared(draft);
 
   // The approval itself, not the gate's account of it: a gate result says what
   // was on record when it ran, and an approval is what publishing needs now.
   if (!isHumanApproved(draft)) {
-    throw new Error("Human Approval is required before public publishing");
+    throw new PublicationRefusedError(
+      "human-approval-required",
+      "Human Approval is required before public publishing",
+    );
+  }
+}
+
+/**
+ * Whether the Quality Gate has run and left nothing blocking that approving
+ * would not answer.
+ *
+ * `humanApproval` is dropped from what the last run found because it is the one
+ * condition read from the draft rather than from the prose: the gate answers it
+ * by looking at `draft.humanApproval` (ADR-0017), so approving between a run and
+ * a publish genuinely resolves it, and re-reading the approval here is the same
+ * check with a fresher answer. Every other condition is a judgement about the
+ * draft as the gate found it, and only a new run can change one.
+ */
+function assertQualityGateCleared(
+  draft: ChapterDraft,
+): asserts draft is ChapterDraft & { qualityGate: QualityGateResult } {
+  if (!draft.qualityGate) {
+    throw new PublicationRefusedError(
+      "quality-gate-blocked",
+      "Quality Gate evaluation is required before public publishing",
+    );
+  }
+
+  const blocking = draft.qualityGate.blockingFailures.filter(
+    (condition) => condition !== "humanApproval",
+  );
+
+  if (blocking.length > 0) {
+    throw new PublicationRefusedError(
+      "quality-gate-blocked",
+      `blocking Quality Gate failure: ${blocking.join(", ")}`,
+    );
   }
 }
 
 function createPublishedSnapshot(input: {
   draft: PublishableChapterDraft;
   actor: StaffPrincipal;
+  lineage: readonly ProvenanceEntry[];
   publishedAt?: string;
   version: number;
 }): PublishedSnapshot {
   const { draft } = input;
+  const traced = tracedLineageEntry(draft, input.lineage);
+
+  // The gate's provenance condition passed on the ledger, so reaching here
+  // without lineage means the ledger lost what it had. A snapshot that named no
+  // lineage would be a public Chapter nobody could say the making of.
+  if (!traced) {
+    throw new Error(
+      "the Provenance Ledger holds no lineage for this draft Chapter",
+    );
+  }
 
   return Object.freeze({
     id: `${draft.id}:snapshot:${input.version}`,
@@ -1309,8 +1624,8 @@ function createPublishedSnapshot(input: {
     body: draft.body,
     version: input.version,
     creativeDisclosure: draft.creativeDisclosure,
-    provenanceLedgerEntryId: draft.provenanceLedgerEntryId,
-    rightsRecordId: draft.rightsRecordId,
+    provenanceLedgerEntryId: traced.id,
+    rightsRecordIds: Object.freeze(publishingRightsGrants(draft)),
     publishedAt: input.publishedAt ?? new Date().toISOString(),
     publishedByStaffAccountId: input.actor.staffAccountId,
     publiclyReadable: true,
@@ -1634,7 +1949,7 @@ export function assertStaffPermission(
 }
 
 export function assertStaffMayPublish(
-  principal: Principal,
+  principal: RequestPrincipal,
 ): asserts principal is StaffPrincipal {
   assertStaffPermission(principal, "chapter:publish");
 }

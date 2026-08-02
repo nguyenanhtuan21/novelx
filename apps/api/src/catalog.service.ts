@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
+import { publicChapter, type PublicChapter } from "@novelx/shared";
 
 import type { CatalogRepository } from "./catalog.repository.js";
 
@@ -34,13 +35,21 @@ export class CatalogService {
     return series;
   }
 
-  async getPublicChapter(input: { seriesId: string; chapterId: string }) {
+  /**
+   * A public Chapter read, which is a reader-facing projection rather than the
+   * snapshot itself: how a Chapter was cleared, traced, and published is how
+   * NovelX answers for it internally, and this route is unauthenticated.
+   */
+  async getPublicChapter(input: {
+    seriesId: string;
+    chapterId: string;
+  }): Promise<PublicChapter> {
     const snapshot = await this.catalogRepository.getPublicChapter(input);
 
     if (!snapshot) {
       throw new NotFoundException("Published Snapshot not found");
     }
 
-    return snapshot;
+    return publicChapter(snapshot);
   }
 }

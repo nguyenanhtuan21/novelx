@@ -5,11 +5,11 @@ import type { PublicCatalogSeries } from "@novelx/shared";
 
 import type { CatalogRepository } from "./catalog.repository.js";
 import { CatalogService } from "./catalog.service.js";
-import { SeedCatalogRepository } from "./seed-catalog.repository.js";
+import { seededCatalogRepository } from "./seeded-catalog.fixture.js";
 
 describe("Core Platform catalog API seam", () => {
   it("exposes curated Series metadata with Creative Disclosure and Managed Taxonomy", async () => {
-    const service = new CatalogService(new SeedCatalogRepository());
+    const service = new CatalogService(await seededCatalogRepository());
 
     const [series] = await service.listSeries();
 
@@ -56,16 +56,31 @@ describe("Core Platform catalog API seam", () => {
     );
   });
 
-  it("serves only a Published Snapshot for public chapter reads", async () => {
-    const service = new CatalogService(new SeedCatalogRepository());
+  /**
+   * A public read serves the Chapter, not the making of it: the grants that
+   * cleared it, the lineage it traces, and the Staff Account that published it
+   * are how NovelX answers for the Chapter, and this route asks for no session.
+   */
+  it("serves the reader-facing part of a Published Snapshot and no more", async () => {
+    const service = new CatalogService(await seededCatalogRepository());
 
     const chapter = await service.getPublicChapter({
       seriesId: "thanh-kiem-trong-mua",
       chapterId: "chuong-1",
     });
 
-    assert.equal(chapter.publiclyReadable, true);
     assert.equal(chapter.version, 1);
-    assert.equal(chapter.provenanceLedgerEntryId, "prov-seed-1");
+    assert.equal(chapter.title, "Mùi Mưa Đầu Tiên");
+    assert.deepEqual(Object.keys(chapter).sort(), [
+      "body",
+      "chapterId",
+      "chapterNumber",
+      "creativeDisclosure",
+      "id",
+      "publishedAt",
+      "seriesId",
+      "title",
+      "version",
+    ]);
   });
 });

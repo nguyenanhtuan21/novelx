@@ -5,6 +5,7 @@ import {
 } from "@nestjs/common";
 import {
   CANON_CHANGE_REQUIRES_REASON,
+  PUBLICATION_REFUSALS,
   RIGHTS_EVIDENCE_REQUIRED,
   RIGHTS_GRANT_EXCEEDED,
   RIGHTS_RECORD_REQUIRED,
@@ -27,6 +28,12 @@ const REFUSALS: Readonly<Record<string, "conflict" | "bad-request">> = {
   [RIGHTS_GRANT_EXCEEDED]: "conflict",
   [WORKFLOW_MATERIAL_ALREADY_ATTACHED]: "conflict",
   [RIGHTS_EVIDENCE_REQUIRED]: "bad-request",
+  // Every publishing refusal is state: a gate that has not been passed, a
+  // Chapter that is not next, a time that has not come. None of them is
+  // something the operator can fix by sending a different request.
+  ...Object.fromEntries(
+    PUBLICATION_REFUSALS.map((refusal) => [refusal, "conflict" as const]),
+  ),
 };
 
 /**

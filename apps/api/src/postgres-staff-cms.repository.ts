@@ -86,16 +86,17 @@ export class PostgresStaffCmsRepository implements StaffCmsRepository {
     );
     const row = found.rows[0];
 
-    return row
-      ? {
-          id: row.id,
-          title: row.title,
-          synopsis: row.synopsis,
-          creativeDisclosure: row.creative_disclosure,
-          taxonomy: row.taxonomy,
-          status: row.status,
-        }
-      : undefined;
+    return row ? toSeries(row) : undefined;
+  }
+
+  async listSeries(): Promise<Series[]> {
+    const found = await this.pool.query<SeriesRow>(
+      `select id, title, synopsis, creative_disclosure, taxonomy, status
+         from series
+        order by title`,
+    );
+
+    return found.rows.map(toSeries);
   }
 
   async saveStoryBible(storyBible: StoryBible): Promise<void> {
@@ -198,6 +199,17 @@ export class PostgresStaffCmsRepository implements StaffCmsRepository {
 
     return drafts.rows.map(toChapterDraft);
   }
+}
+
+function toSeries(row: SeriesRow): Series {
+  return {
+    id: row.id,
+    title: row.title,
+    synopsis: row.synopsis,
+    creativeDisclosure: row.creative_disclosure,
+    taxonomy: row.taxonomy,
+    status: row.status,
+  };
 }
 
 function toChapterDraft(row: ChapterDraftRow): ChapterDraft {

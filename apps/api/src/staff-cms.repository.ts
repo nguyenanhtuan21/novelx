@@ -13,6 +13,9 @@ export const STAFF_CMS_REPOSITORY = Symbol("STAFF_CMS_REPOSITORY");
 export type StaffCmsRepository = {
   saveSeries(series: Series): Promise<void>;
   findSeries(seriesId: string): Promise<Series | undefined>;
+  /** Every governed Series, in title order. Still not a public read: the public
+   * catalog is the Series that have a Published Snapshot, not this list. */
+  listSeries(): Promise<Series[]>;
   saveStoryBible(storyBible: StoryBible): Promise<void>;
   findStoryBible(seriesId: string): Promise<StoryBible | undefined>;
   saveChapterDraft(draft: ChapterDraft): Promise<void>;

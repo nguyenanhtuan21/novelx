@@ -28,11 +28,7 @@ describe("public Chapter reader web/API seam", () => {
           body: "Snapshot paragraph one.\n\nSnapshot paragraph two from immutable publication.",
           version: 2,
           creativeDisclosure: "Hybrid",
-          provenanceLedgerEntryId: "prov-snapshot-2",
-          rightsRecordId: "rights-snapshot-2",
           publishedAt: "2026-07-31T00:00:00.000Z",
-          publishedByStaffAccountId: "staff-editor",
-          publiclyReadable: true,
         }),
         {
           headers: { "content-type": "application/json" },

@@ -7,6 +7,7 @@ import type {
 } from "@novelx/shared";
 
 import type { CatalogRepository } from "./catalog.repository.js";
+import { PostgresPublishingRepository } from "./postgres-publishing.repository.js";
 
 type SeriesRow = {
   id: string;
@@ -18,26 +19,22 @@ type SeriesRow = {
   first_public_chapter_id: string | null;
 };
 
-type PublishedSnapshotRow = {
-  id: string;
-  chapter_id: string;
-  series_id: string;
-  chapter_number: number;
-  title: string;
-  body: string;
-  version: number;
-  creative_disclosure: CreativeDisclosure;
-  provenance_ledger_entry_id: string;
-  rights_record_id: string;
-  published_at: Date;
-  published_by_staff_account_id: string;
-};
-
+/**
+ * The public catalog, read as one join rather than as a Series list and a
+ * published lookup per Series.
+ *
+ * A Chapter read is the same question the publishing side already answers —
+ * the newest public version of this Chapter — so it is asked there rather than
+ * written out a second time: two copies of that query are two chances for one
+ * of them to forget `publicly_readable`.
+ */
 export class PostgresCatalogRepository implements CatalogRepository {
   private readonly pool: Pool;
+  private readonly published: PostgresPublishingRepository;
 
   constructor(connectionString: string) {
     this.pool = new Pool({ connectionString });
+    this.published = new PostgresPublishingRepository(connectionString);
   }
 
   async listSeries(): Promise<PublicCatalogSeries[]> {
@@ -76,45 +73,6 @@ export class PostgresCatalogRepository implements CatalogRepository {
     seriesId: string;
     chapterId: string;
   }): Promise<PublishedSnapshot | undefined> {
-    const result = await this.pool.query<PublishedSnapshotRow>(
-      `select id,
-              chapter_id,
-              series_id,
-              chapter_number,
-              title,
-              body,
-              version,
-              creative_disclosure,
-              provenance_ledger_entry_id,
-              rights_record_id,
-              published_at,
-              published_by_staff_account_id
-         from published_snapshots
-        where series_id = $1 and chapter_id = $2 and publicly_readable = true
-        order by version desc
-        limit 1`,
-      [input.seriesId, input.chapterId],
-    );
-
-    const row = result.rows[0];
-    if (!row) {
-      return undefined;
-    }
-
-    return Object.freeze({
-      id: row.id,
-      chapterId: row.chapter_id,
-      seriesId: row.series_id,
-      chapterNumber: row.chapter_number,
-      title: row.title,
-      body: row.body,
-      version: row.version,
-      creativeDisclosure: row.creative_disclosure,
-      provenanceLedgerEntryId: row.provenance_ledger_entry_id,
-      rightsRecordId: row.rights_record_id,
-      publishedAt: row.published_at.toISOString(),
-      publishedByStaffAccountId: row.published_by_staff_account_id,
-      publiclyReadable: true,
-    });
+    return this.published.findPublishedChapter(input);
   }
 }

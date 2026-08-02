@@ -19,7 +19,11 @@ import {
   type CreativeDisclosure,
   type ReportedQualityCheck,
 } from "./index.js";
-import { passedQualityGate, reportedChecks } from "./quality-gate.fixture.js";
+import {
+  chapterDraftLineage,
+  passedQualityGate,
+  reportedChecks,
+} from "./quality-gate.fixture.js";
 
 describe("publish/read workflow", () => {
   it("requires rights, provenance, quality gate, and human approval before public reading", () => {
@@ -53,6 +57,8 @@ describe("publish/read workflow", () => {
         staffAccountId: "staff-editor-1",
         permissions: ["chapter:publish"],
       }),
+      publishedChapterNumbers: [],
+      lineage: chapterDraftLineage(draft),
     });
 
     assert.equal(snapshot.publiclyReadable, true);
@@ -99,6 +105,8 @@ describe("publish/read workflow", () => {
             staffAccountId: "staff-editor-1",
             permissions: ["chapter:publish"],
           }),
+          publishedChapterNumbers: [],
+          lineage: chapterDraftLineage(draft),
         }),
       /blocking Quality Gate failure: policySafety/,
     );
@@ -154,19 +162,23 @@ describe("Published Snapshot revisions", () => {
         staffAccountId: "staff-editor-1",
         permissions: ["chapter:publish"],
       }),
+      publishedChapterNumbers: [],
+      lineage: chapterDraftLineage(originalDraft),
     });
 
+    const fixedDraft = createApprovedDraft({
+      id: "chapter-1",
+      seriesId: series.id,
+      body: "Fixed public text.",
+    });
     const fixedSnapshot = revisePublishedChapter({
       previousSnapshot: originalSnapshot,
-      fixedDraft: createApprovedDraft({
-        id: "chapter-1",
-        seriesId: series.id,
-        body: "Fixed public text.",
-      }),
+      fixedDraft,
       actor: createStaffPrincipal({
         staffAccountId: "staff-editor-2",
         permissions: ["chapter:publish"],
       }),
+      lineage: chapterDraftLineage(fixedDraft),
       reason: "Fix typo reported by editorial QA",
     });
 

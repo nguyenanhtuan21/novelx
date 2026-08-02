@@ -72,7 +72,7 @@ const seriesBody = {
 };
 
 const draftBody = {
-  id: "chuong-1",
+  id: "chuong-cms-1",
   chapterNumber: 1,
   title: "Mùi Mưa Đầu Tiên",
   body: "Mưa rơi trên mái ngõ.",
@@ -105,7 +105,7 @@ const reportedChecks: readonly ReportedQualityCheck[] = [
 ];
 
 const qualityGatePath =
-  "/staff/series/series-cms-1/chapters/chuong-1/quality-gate";
+  "/staff/series/series-cms-1/chapters/chuong-cms-1/quality-gate";
 
 beforeEach(() => {
   delete process.env.DATABASE_URL;
@@ -145,7 +145,7 @@ describe("running the Quality Gate", () => {
         "humanApproval",
       ]);
       assert.equal(run.body.publicPublishingReady, false);
-      assert.equal(run.body.chapterId, "chuong-1");
+      assert.equal(run.body.chapterId, "chuong-cms-1");
       // Authoring the draft left lineage, so provenance is the one recorded
       // condition a fresh draft already answers.
       assert.equal(
@@ -248,7 +248,7 @@ describe("running the Quality Gate", () => {
 
       const run = await api(
         "POST",
-        "/staff/series/series-cms-1/chapters/chuong-9/quality-gate",
+        "/staff/series/series-cms-1/chapters/chuong-cms-9/quality-gate",
         { headers, body: { reportedChecks: [] } },
       );
 
@@ -356,7 +356,7 @@ describe("what the Quality Gate leaves behind", () => {
       ]);
       assert.deepEqual(
         [...new Set(runs.map((record) => record.target))],
-        ["chapter-draft:chuong-1"],
+        ["chapter-draft:chuong-cms-1"],
       );
     });
   });
@@ -418,10 +418,14 @@ async function clearedDraft(
     headers,
     body: rightsRecordBody,
   });
-  await api("POST", "/staff/series/series-cms-1/chapters/chuong-1/materials", {
-    headers,
-    body: { material, use: "publishing", territory: "VN" },
-  });
+  await api(
+    "POST",
+    "/staff/series/series-cms-1/chapters/chuong-cms-1/materials",
+    {
+      headers,
+      body: { material, use: "publishing", territory: "VN" },
+    },
+  );
 }
 
 /** The draft's lineage, oldest entry first, the way it was written. */
@@ -431,7 +435,7 @@ async function draftLineage(
 ): Promise<ProvenanceEntry[]> {
   const read = await api<{ entries: ProvenanceEntry[] }>(
     "GET",
-    "/staff/series/series-cms-1/provenance/chapter-draft/chuong-1",
+    "/staff/series/series-cms-1/provenance/chapter-draft/chuong-cms-1",
     { headers },
   );
 
