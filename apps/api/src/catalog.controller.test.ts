@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, it } from "node:test";
 
 import { NestFactory } from "@nestjs/core";
-import type { PublicCatalogSeries, PublishedSnapshot } from "@novelx/shared";
+import type { PublicCatalogSeries, PublicChapter } from "@novelx/shared";
 
 import { AppModule } from "./app.module.js";
 
@@ -85,12 +85,20 @@ describe("Core Platform catalog HTTP API seam", () => {
       const body = await response.text();
 
       assert.equal(response.status, 200, body);
-      const snapshot = JSON.parse(body) as PublishedSnapshot;
+      const chapter = JSON.parse(body) as PublicChapter;
 
-      assert.equal(snapshot.chapterId, "chuong-1");
-      assert.equal(snapshot.publiclyReadable, true);
-      assert.equal(snapshot.version, 1);
-      assert.equal(snapshot.provenanceLedgerEntryId, "prov-seed-1");
+      assert.equal(chapter.chapterId, "chuong-1");
+      assert.equal(chapter.version, 1);
+      assert.equal(chapter.title, "Mùi Mưa Đầu Tiên");
+      // How the Chapter was cleared, traced, and published stays internal:
+      // this route asks for no session at all.
+      for (const internal of [
+        "provenanceLedgerEntryId",
+        "rightsRecordIds",
+        "publishedByStaffAccountId",
+      ]) {
+        assert.equal(internal in chapter, false, internal);
+      }
     } finally {
       await app.close();
     }

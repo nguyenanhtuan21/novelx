@@ -56,7 +56,12 @@ describe("Core Platform catalog API seam", () => {
     );
   });
 
-  it("serves only a Published Snapshot for public chapter reads", async () => {
+  /**
+   * A public read serves the Chapter, not the making of it: the grants that
+   * cleared it, the lineage it traces, and the Staff Account that published it
+   * are how NovelX answers for the Chapter, and this route asks for no session.
+   */
+  it("serves the reader-facing part of a Published Snapshot and no more", async () => {
     const service = new CatalogService(await seededCatalogRepository());
 
     const chapter = await service.getPublicChapter({
@@ -64,8 +69,18 @@ describe("Core Platform catalog API seam", () => {
       chapterId: "chuong-1",
     });
 
-    assert.equal(chapter.publiclyReadable, true);
     assert.equal(chapter.version, 1);
-    assert.equal(chapter.provenanceLedgerEntryId, "prov-seed-1");
+    assert.equal(chapter.title, "Mùi Mưa Đầu Tiên");
+    assert.deepEqual(Object.keys(chapter).sort(), [
+      "body",
+      "chapterId",
+      "chapterNumber",
+      "creativeDisclosure",
+      "id",
+      "publishedAt",
+      "seriesId",
+      "title",
+      "version",
+    ]);
   });
 });

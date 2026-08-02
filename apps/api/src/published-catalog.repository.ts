@@ -11,6 +11,12 @@ import type { StaffCmsRepository } from "./staff-cms.repository.js";
  * Nothing here marks a Series public. A Series becomes readable by having a
  * Chapter published and stops being readable by not having one, so there is no
  * flag to fall out of step with what readers can actually open.
+ *
+ * The Postgres catalog additionally hides a Series under takedown, which this
+ * cannot: takedown is a column with no term in the domain yet, and it belongs
+ * to the takedown ticket that will give it one. Until then a deployment without
+ * a database has no takedown, rather than a takedown that silently does
+ * nothing.
  */
 export class PublishedCatalogRepository implements CatalogRepository {
   constructor(

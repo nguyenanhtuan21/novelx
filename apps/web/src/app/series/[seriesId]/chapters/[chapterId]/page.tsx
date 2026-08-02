@@ -1,4 +1,4 @@
-import type { PublishedSnapshot } from "@novelx/shared";
+import type { PublicChapter } from "@novelx/shared";
 import React from "react";
 
 import { fetchPublicCorePlatformJson } from "../../../../core-platform-api";
@@ -14,8 +14,8 @@ type ChapterPageProps = {
 async function fetchPublicChapter(input: {
   seriesId: string;
   chapterId: string;
-}): Promise<PublishedSnapshot> {
-  return fetchPublicCorePlatformJson<PublishedSnapshot>(
+}): Promise<PublicChapter> {
+  return fetchPublicCorePlatformJson<PublicChapter>(
     `/catalog/series/${input.seriesId}/chapters/${input.chapterId}`,
     "Chapter",
   );

@@ -340,6 +340,42 @@ export type PublishedSnapshot = Readonly<{
 }>;
 
 /**
+ * What a reader may see of a Published Snapshot: the Chapter, not the making
+ * of it.
+ *
+ * The grants that cleared a Chapter, the lineage it traces, and the Staff
+ * Account that published it are how NovelX answers for the Chapter internally.
+ * They are named here by being left out, so a public read cannot serve them by
+ * a snapshot growing a field nobody thought about.
+ */
+export type PublicChapter = Pick<
+  PublishedSnapshot,
+  | "id"
+  | "chapterId"
+  | "seriesId"
+  | "chapterNumber"
+  | "title"
+  | "body"
+  | "version"
+  | "creativeDisclosure"
+  | "publishedAt"
+>;
+
+export function publicChapter(snapshot: PublishedSnapshot): PublicChapter {
+  return Object.freeze({
+    id: snapshot.id,
+    chapterId: snapshot.chapterId,
+    seriesId: snapshot.seriesId,
+    chapterNumber: snapshot.chapterNumber,
+    title: snapshot.title,
+    body: snapshot.body,
+    version: snapshot.version,
+    creativeDisclosure: snapshot.creativeDisclosure,
+    publishedAt: snapshot.publishedAt,
+  });
+}
+
+/**
  * Where a traced change came from: an accountable person, or an AI workflow
  * run. A run is named as itself rather than as whoever started it, because how
  * AI-assisted content was made is the fact this ledger exists to keep.
@@ -840,6 +876,14 @@ export function clearMaterialForWorkflowUse(input: {
  * Carries cleared material into a draft's workflow. It takes an attachment
  * rather than a material and a record, so there is no way to attach material
  * that did not go through the rights gate first.
+ *
+ * Attaching changes what the draft is made of, so the Quality Gate result and
+ * the Human Approval come off it. Both describe the draft as it was, and the
+ * grants a Published Snapshot names are read from these attachments: leaving
+ * them on would publish a Chapter citing a grant no run evaluated and no
+ * reviewer saw. Re-running the gate and approving again is how a draft that
+ * has changed becomes publishable, which is what makes approval mean the
+ * content rather than the Chapter's name.
  */
 export function attachWorkflowMaterial(input: {
   draft: ChapterDraft;
@@ -861,10 +905,14 @@ export function attachWorkflowMaterial(input: {
     );
   }
 
-  return {
+  const changed = {
     ...input.draft,
     workflowMaterials: [...attached, attachment],
   };
+  delete changed.qualityGate;
+  delete changed.humanApproval;
+
+  return changed;
 }
 
 function validateWorkflowMaterial(material: WorkflowMaterial): void {
@@ -1174,9 +1222,10 @@ function provenanceFinding(records: QualityGateRecords): QualityGateFinding {
 }
 
 /**
- * The most recent line of lineage that traces this draft Chapter, out of
- * however much of the ledger was read. Entries about some other artifact are no
- * answer at all: they would hand another Chapter's history to whoever asked.
+ * The line of lineage that traces this draft Chapter, out of however much of
+ * the ledger was read. Lineage arrives newest first, so the first match is the
+ * most recent one. Entries about some other artifact are no answer at all:
+ * they would hand another Chapter's history to whoever asked.
  */
 function tracedLineageEntry(
   draft: ChapterDraft,
@@ -1248,6 +1297,9 @@ export function createChapterDraft(
  * "nobody approved it" and "the Chapter before it is not out yet" are different
  * answers to whoever is trying to publish.
  */
+/** What a Chapter is on its first publication; a fix is the version after. */
+const FIRST_PUBLISHED_VERSION = 1;
+
 export const PUBLICATION_REFUSALS = [
   "quality-gate-blocked",
   "human-approval-required",
@@ -1316,7 +1368,7 @@ export function approveChapterDraft(input: {
 }
 
 /**
- * Puts an approved Chapter in the queue for the time it becomes public.
+ * Records when an approved Chapter may become public.
  *
  * Only a Chapter that could be published right now can be scheduled, so a
  * schedule is a decision about *when* rather than a promise to finish the
@@ -1369,7 +1421,6 @@ export function publishChapter(input: {
   /** Present when this Chapter was scheduled, and it may not go out early. */
   schedule?: ChapterPublicationSchedule;
   publishedAt?: string;
-  version?: number;
 }): PublishedSnapshot {
   const { draft } = input;
   assertStaffMayPublish(input.actor);
@@ -1385,7 +1436,7 @@ export function publishChapter(input: {
     actor: input.actor,
     lineage: input.lineage,
     publishedAt,
-    version: input.version ?? 1,
+    version: FIRST_PUBLISHED_VERSION,
   });
 }
 

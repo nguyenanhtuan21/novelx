@@ -3,11 +3,14 @@ import { describe, it } from "node:test";
 
 import {
   approveChapterDraft,
+  attachWorkflowMaterial,
   authorChapterDraft,
+  clearMaterialForWorkflowUse,
   createSeries,
   createStaffPrincipal,
   publishChapter,
   scheduleChapterPublication,
+  WORLDWIDE_TERRITORY,
   type ChapterDraft,
   type ChapterPublicationSchedule,
   type ProvenanceEntry,
@@ -202,6 +205,33 @@ describe("publishing an approved Chapter", () => {
 
     assert.deepEqual(snapshot.rightsRecordIds, [chapterRightsRecord.id]);
     assert.equal(snapshot.provenanceLedgerEntryId, "prov-chuong-1");
+  });
+
+  /**
+   * The grants a snapshot names come from the material the draft carries, so
+   * attaching more of it after a reviewer signed off would publish a Chapter
+   * citing a grant nobody evaluated. The approval goes with the content.
+   */
+  it("refuses a draft that changed after it was approved", () => {
+    const approvedDraft = approved({ id: "chuong-1", chapterNumber: 1 });
+
+    const changed = attachWorkflowMaterial({
+      draft: approvedDraft,
+      attachment: clearMaterialForWorkflowUse({
+        material: chapterRightsRecord.material,
+        use: "publishing",
+        rightsRecord: chapterRightsRecord,
+        territory: WORLDWIDE_TERRITORY,
+        usedAt: APPROVED_AT,
+      }),
+    });
+
+    assert.equal(changed.humanApproval, undefined);
+    assert.equal(changed.qualityGate, undefined);
+    assert.throws(
+      () => publish({ draft: changed, publishedChapterNumbers: [] }),
+      /Quality Gate evaluation is required before public publishing/,
+    );
   });
 
   it("refuses a draft the Provenance Ledger holds no lineage for", () => {
