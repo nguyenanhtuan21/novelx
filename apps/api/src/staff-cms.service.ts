@@ -340,15 +340,27 @@ export class StaffCmsService {
   /**
    * Chapter order is what a reader follows, so two drafts cannot claim the same
    * place in a Series, and a draft cannot quietly overwrite an existing one.
+   *
+   * The id is checked across every Series rather than within this one: a
+   * Chapter id names a Chapter everywhere it is used — the CMS holds drafts
+   * under it, the ledger traces them by it, and a Published Snapshot is named
+   * after it — so reusing one under a second Series would not create a second
+   * Chapter, it would move the first.
    */
   private async assertChapterIsFree(draft: ChapterDraft): Promise<void> {
-    const drafts = await this.staffCmsRepository.listChapterDrafts(
-      draft.seriesId,
-    );
+    const [held, drafts] = await Promise.all([
+      this.staffCmsRepository.findChapterDraft(draft.id),
+      this.staffCmsRepository.listChapterDrafts(draft.seriesId),
+    ]);
+
+    if (held) {
+      throw new ConflictException(
+        `the CMS already holds a draft Chapter called ${held.id}, in Series ${held.seriesId}`,
+      );
+    }
+
     const clash = drafts.find(
-      (existing) =>
-        existing.id === draft.id ||
-        existing.chapterNumber === draft.chapterNumber,
+      (existing) => existing.chapterNumber === draft.chapterNumber,
     );
 
     if (clash) {

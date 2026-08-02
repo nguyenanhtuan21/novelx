@@ -296,7 +296,7 @@ function snapshot(): PublishedSnapshot {
     version: 2,
     creativeDisclosure: "Hybrid",
     provenanceLedgerEntryId: "provenance-1",
-    rightsRecordId: "rights-1",
+    rightsRecordIds: ["rights-1"],
     publishedAt: "2026-08-02T10:00:00.000Z",
     publishedByStaffAccountId: "staff-editor-1",
     publiclyReadable: true,

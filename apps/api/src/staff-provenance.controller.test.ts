@@ -72,7 +72,7 @@ const seriesBody = {
 const canon = [{ id: "canon-1", statement: "Mưa Ngâu chỉ rơi vào tháng bảy." }];
 
 const draftBody = {
-  id: "chuong-1",
+  id: "chuong-cms-1",
   chapterNumber: 1,
   title: "Mùi Mưa Đầu Tiên",
   body: "Mưa rơi trên mái ngõ.",
@@ -268,7 +268,7 @@ describe("lineage of one traced artifact", () => {
       });
       await api(
         "POST",
-        "/staff/series/series-cms-1/chapters/chuong-1/materials",
+        "/staff/series/series-cms-1/chapters/chuong-cms-1/materials",
         {
           headers,
           body: { material, use: "ai-workflow", territory: "VN" },
@@ -277,7 +277,7 @@ describe("lineage of one traced artifact", () => {
 
       const entries = await targetProvenance(api, headers, {
         kind: "chapter-draft",
-        id: "chuong-1",
+        id: "chuong-cms-1",
       });
 
       assert.deepEqual(
@@ -324,14 +324,14 @@ describe("lineage of one traced artifact", () => {
 
       const refused = await api("POST", "/staff/series/series-cms-1/chapters", {
         headers: await historianHeaders(api),
-        body: { ...draftBody, id: "chuong-2", chapterNumber: 2 },
+        body: { ...draftBody, id: "chuong-cms-2", chapterNumber: 2 },
       });
       assert.equal(refused.status, 403);
 
       const entries = await seriesProvenance(api, headers);
 
       assert.equal(
-        entries.filter((entry) => entry.target.id === "chuong-2").length,
+        entries.filter((entry) => entry.target.id === "chuong-cms-2").length,
         0,
       );
     });

@@ -28,7 +28,7 @@ type PublishedSnapshotRow = {
   version: number;
   creative_disclosure: CreativeDisclosure;
   provenance_ledger_entry_id: string;
-  rights_record_id: string;
+  rights_record_ids: string[];
   published_at: Date;
   published_by_staff_account_id: string;
 };
@@ -86,7 +86,7 @@ export class PostgresCatalogRepository implements CatalogRepository {
               version,
               creative_disclosure,
               provenance_ledger_entry_id,
-              rights_record_id,
+              rights_record_ids,
               published_at,
               published_by_staff_account_id
          from published_snapshots
@@ -111,7 +111,7 @@ export class PostgresCatalogRepository implements CatalogRepository {
       version: row.version,
       creativeDisclosure: row.creative_disclosure,
       provenanceLedgerEntryId: row.provenance_ledger_entry_id,
-      rightsRecordId: row.rights_record_id,
+      rightsRecordIds: Object.freeze(row.rights_record_ids),
       publishedAt: row.published_at.toISOString(),
       publishedByStaffAccountId: row.published_by_staff_account_id,
       publiclyReadable: true,

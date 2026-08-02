@@ -436,7 +436,7 @@ describe("draft Chapter in the staff CMS", () => {
         {
           headers,
           body: {
-            id: "chuong-1",
+            id: "chuong-cms-1",
             chapterNumber: 1,
             title: "Mùi Mưa Đầu Tiên",
             body: "Mưa rơi trên mái ngõ.",
@@ -458,12 +458,12 @@ describe("draft Chapter in the staff CMS", () => {
       );
       assert.deepEqual(
         cms.body.chapterDrafts.map((entry) => entry.id),
-        ["chuong-1"],
+        ["chuong-cms-1"],
       );
 
       for (const path of [
         "/catalog/series/series-cms-1",
-        "/catalog/series/series-cms-1/chapters/chuong-1",
+        "/catalog/series/series-cms-1/chapters/chuong-cms-1",
       ]) {
         const publicRead = await api("GET", path);
         assert.equal(publicRead.status, 404, path);
@@ -476,7 +476,7 @@ describe("draft Chapter in the staff CMS", () => {
       const orphan = await api("POST", "/staff/series/series-nobody/chapters", {
         headers: await editorHeaders(api),
         body: {
-          id: "chuong-1",
+          id: "chuong-cms-1",
           chapterNumber: 1,
           title: "Mùi Mưa Đầu Tiên",
           body: "Mưa rơi trên mái ngõ.",
@@ -498,12 +498,12 @@ describe("draft Chapter in the staff CMS", () => {
       };
       await api("POST", "/staff/series/series-cms-1/chapters", {
         headers,
-        body: { ...draft, id: "chuong-1" },
+        body: { ...draft, id: "chuong-cms-1" },
       });
 
       const clash = await api("POST", "/staff/series/series-cms-1/chapters", {
         headers,
-        body: { ...draft, id: "chuong-1-bis" },
+        body: { ...draft, id: "chuong-cms-1-bis" },
       });
 
       assert.equal(clash.status, 409);
@@ -521,7 +521,7 @@ describe("draft Chapter in the staff CMS", () => {
         {
           headers: readerHeaders(),
           body: {
-            id: "chuong-1",
+            id: "chuong-cms-1",
             chapterNumber: 1,
             title: "Mùi Mưa Đầu Tiên",
             body: "Mưa rơi trên mái ngõ.",

@@ -131,12 +131,19 @@ describe("draft Chapter authoring", () => {
             staffAccountId: "staff-editor-1",
             permissions: ["chapter:publish"],
           }),
+          publishedChapterNumbers: [],
+          lineage: [],
         }),
-      /Rights Record is required before public publishing/,
+      /Quality Gate evaluation is required before public publishing/,
     );
   });
 
-  it("still refuses publishing once rights and provenance exist but no Quality Gate does", () => {
+  /**
+   * Naming a Rights Record and a Provenance Ledger entry is not the same as
+   * having been through them: the ids are strings the draft carries, and the
+   * Quality Gate is where they are resolved against the records.
+   */
+  it("still refuses publishing on ids nobody resolved", () => {
     const series = governedSeries();
 
     assert.throws(
@@ -158,6 +165,8 @@ describe("draft Chapter authoring", () => {
             staffAccountId: "staff-editor-1",
             permissions: ["chapter:publish"],
           }),
+          publishedChapterNumbers: [],
+          lineage: [],
         }),
       /Quality Gate evaluation is required before public publishing/,
     );

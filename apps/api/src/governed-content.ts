@@ -31,6 +31,18 @@ export async function requireChapterDraft(
   staffCmsRepository: StaffCmsRepository,
   input: { seriesId: string; chapterId: string },
 ): Promise<ChapterDraft> {
+  return (await requireSeriesChapter(staffCmsRepository, input)).draft;
+}
+
+/**
+ * The same lookup, for the operations that act on the Chapter *and* the Series
+ * it belongs to — publishing above all, which reads the Series to attach the
+ * Chapter to it rather than taking the Series id on the caller's word.
+ */
+export async function requireSeriesChapter(
+  staffCmsRepository: StaffCmsRepository,
+  input: { seriesId: string; chapterId: string },
+): Promise<{ series: Series; draft: ChapterDraft }> {
   const series = await requireSeries(staffCmsRepository, input.seriesId);
   const draft = await staffCmsRepository.findChapterDraft(input.chapterId);
 
@@ -40,5 +52,5 @@ export async function requireChapterDraft(
     );
   }
 
-  return draft;
+  return { series, draft };
 }

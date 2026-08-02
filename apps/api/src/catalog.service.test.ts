@@ -5,11 +5,11 @@ import type { PublicCatalogSeries } from "@novelx/shared";
 
 import type { CatalogRepository } from "./catalog.repository.js";
 import { CatalogService } from "./catalog.service.js";
-import { SeedCatalogRepository } from "./seed-catalog.repository.js";
+import { seededCatalogRepository } from "./seeded-catalog.fixture.js";
 
 describe("Core Platform catalog API seam", () => {
   it("exposes curated Series metadata with Creative Disclosure and Managed Taxonomy", async () => {
-    const service = new CatalogService(new SeedCatalogRepository());
+    const service = new CatalogService(await seededCatalogRepository());
 
     const [series] = await service.listSeries();
 
@@ -57,7 +57,7 @@ describe("Core Platform catalog API seam", () => {
   });
 
   it("serves only a Published Snapshot for public chapter reads", async () => {
-    const service = new CatalogService(new SeedCatalogRepository());
+    const service = new CatalogService(await seededCatalogRepository());
 
     const chapter = await service.getPublicChapter({
       seriesId: "thanh-kiem-trong-mua",

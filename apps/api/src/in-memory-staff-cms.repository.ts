@@ -15,6 +15,12 @@ export class InMemoryStaffCmsRepository implements StaffCmsRepository {
     return this.series.get(seriesId);
   }
 
+  async listSeries(): Promise<Series[]> {
+    return [...this.series.values()].sort((left, right) =>
+      left.title.localeCompare(right.title),
+    );
+  }
+
   async saveStoryBible(storyBible: StoryBible): Promise<void> {
     this.storyBibles.set(storyBible.seriesId, storyBible);
   }

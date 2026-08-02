@@ -1,6 +1,7 @@
 import {
+  approveChapterDraft,
+  authorChapterDraft,
   chapterDraftProvenance,
-  createChapterDraft,
   createProvenanceEntry,
   createRightsRecord,
   createSeries,
@@ -10,12 +11,13 @@ import {
   publishChapter,
   WORLDWIDE_TERRITORY,
   type ChapterDraft,
-  type PublicCatalogSeries,
-  type PublishedSnapshot,
   type ReportedQualityCheck,
 } from "@novelx/shared";
 
-import type { CatalogRepository } from "./catalog.repository.js";
+import type { ProvenanceRepository } from "./provenance.repository.js";
+import type { PublishingRepository } from "./publishing.repository.js";
+import type { RightsRepository } from "./rights.repository.js";
+import type { StaffCmsRepository } from "./staff-cms.repository.js";
 
 const seedSeries = createSeries({
   id: "thanh-kiem-trong-mua",
@@ -38,7 +40,12 @@ const seedSeries = createSeries({
 
 const seedEditor = createStaffPrincipal({
   staffAccountId: "staff-seed-editor",
-  permissions: ["chapter:publish", "rights:write"],
+  permissions: [
+    "chapter:approve",
+    "chapter:publish",
+    "rights:write",
+    "canon:write",
+  ],
 });
 
 const seedRightsRecord = createRightsRecord({
@@ -56,18 +63,14 @@ const seedRightsRecord = createRightsRecord({
 });
 
 const seedDraft: ChapterDraft = {
-  id: "chuong-1",
-  seriesId: seedSeries.id,
-  chapterNumber: 1,
-  title: "Mùi Mưa Đầu Tiên",
-  body: "Mưa rơi trên mái ngõ, và một lời thề cũ được nhắc lại trong đêm.",
-  creativeDisclosure: "Hybrid",
+  ...authorChapterDraft({
+    id: "chuong-1",
+    series: seedSeries,
+    chapterNumber: 1,
+    title: "Mùi Mưa Đầu Tiên",
+    body: "Mưa rơi trên mái ngõ, và một lời thề cũ được nhắc lại trong đêm.",
+  }),
   rightsRecordId: seedRightsRecord.id,
-  provenanceLedgerEntryId: "prov-seed-1",
-  humanApproval: {
-    reviewerStaffAccountId: seedEditor.staffAccountId,
-    approvedAt: "2026-07-31T00:00:00.000Z",
-  },
 };
 
 const seedLineage = [
@@ -87,17 +90,14 @@ const seedReportedChecks: readonly ReportedQualityCheck[] = [
   { condition: "metadata", verdict: "pass", score: 100 },
 ];
 
-// The seed chapter goes through the same path a real one does: a grant on
-// record, lineage in the ledger, a reviewer who approved it, and a Quality Gate
-// run over all of it. Hand-writing a passing gate result would make the seed
-// demonstrate a route that does not exist.
-const seedSnapshot = publishChapter({
-  series: seedSeries,
-  draft: createChapterDraft({
+// The seed Chapter goes through the same path a real one does: a grant on
+// record, lineage in the ledger, a Quality Gate run over all of it, a reviewer
+// who approved it, and a publication in sequence. Hand-writing a passing gate
+// result or an approval would make the seed demonstrate a route that does not
+// exist.
+const seedApprovedDraft = approveChapterDraft({
+  draft: {
     ...seedDraft,
-    // Restated because createChapterDraft demands one: on a draft it is optional,
-    // and workflow entry is where it stops being.
-    rightsRecordId: seedRightsRecord.id,
     qualityGate: evaluateQualityGate({
       draft: seedDraft,
       chapterRightsRecord: seedRightsRecord,
@@ -105,29 +105,41 @@ const seedSnapshot = publishChapter({
       reportedChecks: seedReportedChecks,
       evaluatedAt: "2026-07-31T00:00:00.000Z",
     }),
-  }),
+  },
   actor: seedEditor,
+  approvedAt: "2026-07-31T00:00:00.000Z",
+});
+
+const seedSnapshot = publishChapter({
+  series: seedSeries,
+  draft: seedApprovedDraft,
+  actor: seedEditor,
+  publishedChapterNumbers: [],
+  lineage: seedLineage,
   publishedAt: "2026-07-31T00:00:00.000Z",
 });
 
-export class SeedCatalogRepository implements CatalogRepository {
-  private readonly snapshots: PublishedSnapshot[] = [seedSnapshot];
-  private readonly series: PublicCatalogSeries[] = [
-    { ...seedSeries, firstPublicChapterId: seedSnapshot.chapterId },
-  ];
+/**
+ * Writes one governed Series into a deployment that has no database, so a local
+ * run has something to read without anyone provisioning a Staff Account first.
+ *
+ * It seeds the stores rather than standing in for them, which is what keeps the
+ * catalog honest: the seed Chapter is public because it was published, exactly
+ * like one an editor publishes in the same process.
+ */
+export async function seedGovernedContent(repositories: {
+  staffCmsRepository: StaffCmsRepository;
+  publishingRepository: PublishingRepository;
+  provenanceRepository: ProvenanceRepository;
+  rightsRepository: RightsRepository;
+}): Promise<void> {
+  await repositories.staffCmsRepository.saveSeries(seedSeries);
+  await repositories.staffCmsRepository.saveChapterDraft(seedApprovedDraft);
+  await repositories.rightsRepository.write(seedRightsRecord);
 
-  listSeries(): PublicCatalogSeries[] {
-    return this.series;
+  for (const entry of seedLineage) {
+    await repositories.provenanceRepository.append(entry);
   }
 
-  getPublicChapter(input: {
-    seriesId: string;
-    chapterId: string;
-  }): PublishedSnapshot | undefined {
-    return this.snapshots.find(
-      (candidate) =>
-        candidate.seriesId === input.seriesId &&
-        candidate.chapterId === input.chapterId,
-    );
-  }
+  await repositories.publishingRepository.publish(seedSnapshot);
 }

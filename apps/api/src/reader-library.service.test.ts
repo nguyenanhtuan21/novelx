@@ -16,7 +16,7 @@ import {
 import { CatalogService } from "./catalog.service.js";
 import { InMemoryReaderLibraryRepository } from "./in-memory-reader-library.repository.js";
 import { ReaderLibraryService } from "./reader-library.service.js";
-import { SeedCatalogRepository } from "./seed-catalog.repository.js";
+import { seededCatalogRepository } from "./seeded-catalog.fixture.js";
 
 const reader = createReaderPrincipal({ readerAccountId: "reader-1" });
 const anonymous = createAnonymousReaderPrincipal({
@@ -25,7 +25,7 @@ const anonymous = createAnonymousReaderPrincipal({
 
 describe("Reader Account library API seam", () => {
   it("shows a followed Series in the Reader Account library", async () => {
-    const service = readerLibraryService();
+    const service = readerLibraryService(await seedCatalogService());
 
     await service.followSeries({
       principal: reader,
@@ -41,7 +41,7 @@ describe("Reader Account library API seam", () => {
   });
 
   it("empties the library when the Reader Account unfollows the Series", async () => {
-    const service = readerLibraryService();
+    const service = readerLibraryService(await seedCatalogService());
     await service.followSeries({
       principal: reader,
       seriesId: "thanh-kiem-trong-mua",
@@ -60,7 +60,7 @@ describe("Reader Account library API seam", () => {
   });
 
   it("carries continue-reading state recorded through the reader boundary", async () => {
-    const service = readerLibraryService();
+    const service = readerLibraryService(await seedCatalogService());
     await service.followSeries({
       principal: reader,
       seriesId: "thanh-kiem-trong-mua",
@@ -83,7 +83,7 @@ describe("Reader Account library API seam", () => {
   });
 
   it("refuses to follow a Series outside the public Curated Catalog", async () => {
-    const service = readerLibraryService();
+    const service = readerLibraryService(await seedCatalogService());
 
     await assert.rejects(
       () =>
@@ -102,7 +102,7 @@ describe("Reader Account library API seam", () => {
 
 describe("recording progress against public content", () => {
   it("refuses progress for a Chapter with no Published Snapshot", async () => {
-    const service = readerLibraryService();
+    const service = readerLibraryService(await seedCatalogService());
 
     await assert.rejects(
       () =>
@@ -117,7 +117,7 @@ describe("recording progress against public content", () => {
   });
 
   it("refuses a position that is not a real place in the Chapter", async () => {
-    const service = readerLibraryService();
+    const service = readerLibraryService(await seedCatalogService());
 
     for (const position of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
       await assert.rejects(
@@ -137,7 +137,7 @@ describe("recording progress against public content", () => {
 
 describe("concurrent writes to one Reader Account library", () => {
   it("keeps both follows when two Series are followed at the same time", async () => {
-    const service = readerLibraryService(twoSeriesCatalog());
+    const service = readerLibraryService(await twoSeriesCatalog());
 
     await Promise.all([
       service.followSeries({
@@ -158,7 +158,7 @@ describe("concurrent writes to one Reader Account library", () => {
   });
 
   it("keeps a concurrent follow when another Series is unfollowed", async () => {
-    const service = readerLibraryService(twoSeriesCatalog());
+    const service = readerLibraryService(await twoSeriesCatalog());
     await service.followSeries({
       principal: reader,
       seriesId: "thanh-kiem-trong-mua",
@@ -183,7 +183,7 @@ describe("concurrent writes to one Reader Account library", () => {
   });
 
   it("keeps progress for one Series when another Series is written at the same time", async () => {
-    const service = readerLibraryService(twoSeriesCatalog());
+    const service = readerLibraryService(await twoSeriesCatalog());
     await service.followSeries({
       principal: reader,
       seriesId: "thanh-kiem-trong-mua",
@@ -218,7 +218,7 @@ describe("concurrent writes to one Reader Account library", () => {
 
 describe("Anonymous Reader Session boundary", () => {
   it("prompts an upgrade instead of serving account-only library behavior", async () => {
-    const service = readerLibraryService();
+    const service = readerLibraryService(await seedCatalogService());
 
     await assert.rejects(
       () =>
@@ -243,7 +243,7 @@ describe("Anonymous Reader Session boundary", () => {
   });
 
   it("keeps lightweight progress and hands it to the Reader Account on upgrade", async () => {
-    const service = readerLibraryService();
+    const service = readerLibraryService(await seedCatalogService());
     await service.recordProgress({
       principal: anonymous,
       seriesId: "thanh-kiem-trong-mua",
@@ -266,7 +266,7 @@ describe("Anonymous Reader Session boundary", () => {
   });
 
   it("upgrades a session once instead of minting a Reader Account per call", async () => {
-    const service = readerLibraryService();
+    const service = readerLibraryService(await seedCatalogService());
 
     const first = await service.upgradeAnonymousSession({
       principal: anonymous,
@@ -287,10 +287,14 @@ function isUpgradePrompt(error: unknown): boolean {
   );
 }
 
-function twoSeriesCatalog(): CatalogService {
-  const seedCatalog = new SeedCatalogRepository();
-  const seedSeries = seedCatalog.listSeries();
-  const seedSnapshot = seedCatalog.getPublicChapter({
+async function seedCatalogService(): Promise<CatalogService> {
+  return new CatalogService(await seededCatalogRepository());
+}
+
+async function twoSeriesCatalog(): Promise<CatalogService> {
+  const seedCatalog = await seededCatalogRepository();
+  const seedSeries = await seedCatalog.listSeries();
+  const seedSnapshot = await seedCatalog.getPublicChapter({
     seriesId: "thanh-kiem-trong-mua",
     chapterId: "chuong-1",
   });
@@ -317,7 +321,7 @@ function twoSeriesCatalog(): CatalogService {
 }
 
 function readerLibraryService(
-  catalogService = new CatalogService(new SeedCatalogRepository()),
+  catalogService: CatalogService,
 ): ReaderLibraryService {
   let mintedReaderAccounts = 0;
 

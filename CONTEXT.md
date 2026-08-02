@@ -37,7 +37,7 @@ A workflow mode where AI can generate, evaluate, revise, and package content wit
 _Avoid_: full auto-publish, unchecked AI publishing
 
 **Human Approval**:
-An explicit approval decision by an accountable human reviewer before a chapter becomes publicly available. Human approval is the required public-publishing gate for MVP chapters.
+An explicit approval decision by an accountable human reviewer before a chapter becomes publicly available. Human approval is the required public-publishing gate for MVP chapters. A reviewer answers only the condition that is theirs: a chapter the Quality Gate blocked for any other reason cannot be approved, and an approval names the reviewer who took the decision, so a second approval does not move that accountability to whoever came last.
 _Avoid_: AI review, automated QA pass
 
 **Canon**:
@@ -57,8 +57,12 @@ A chapter being written in the staff CMS: prose attached to a governed series, a
 _Avoid_: unpublished chapter, private chapter, chapter revision
 
 **Published Snapshot**:
-The immutable public version of a chapter produced by a publishing action. Post-publication fixes create a new revision while preserving the previous snapshot internally with reason, actor, audit trail, and related ticket.
+The immutable public version of a chapter produced by a publishing action. It carries what made it publishable rather than a claim to have been: every Rights Record that cleared the chapter for publishing, and the Provenance Ledger entry its content traced when it went public. Post-publication fixes create a new revision while preserving the previous snapshot internally with reason, actor, audit trail, and related ticket.
 _Avoid_: live chapter body, mutable page content
+
+**Publication Schedule**:
+When an approved Chapter is due to become public, and who put it there. A schedule is an intention rather than a publication: only a chapter that could be published now can be scheduled, publishing before its time is refused, and nothing publishes on its own. The order chapters go out in is not settled here — publishing is in sequence, read from the chapters readers can already see.
+_Avoid_: release queue, publish job, embargo flag
 
 **Quality Gate**:
 The set of required checks that a chapter must pass before public publishing. A quality gate is multi-condition, including canon and continuity, policy safety, originality and IP, metadata, rights and provenance, and human approval; a blocking failure prevents publication even if other scores are high. Its conditions are answered from two places kept apart: canon and continuity, policy safety, originality and IP, and metadata are judgements about the prose, so a checker reports them and a condition nobody reported a check for blocks rather than passes; rights, provenance, and human approval are read from the record, so no report speaks for them.
