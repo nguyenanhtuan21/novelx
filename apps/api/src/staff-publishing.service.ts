@@ -6,13 +6,18 @@ import {
 import {
   approveChapterDraft,
   chapterDraftProvenance,
+  PublicationRefusedError,
   publishChapter,
   publishedSnapshotProvenance,
+  revisePublishedChapter,
   scheduleChapterPublication,
+  takeDownPublishedChapter,
   type ChapterDraft,
   type ChapterPublicationSchedule,
+  type ChapterTakedown,
   type PublishedSnapshot,
   type RequestPrincipal,
+  type StaffPrincipal,
 } from "@novelx/shared";
 
 import { domainRule } from "./domain-rule.js";
@@ -36,6 +41,17 @@ const PUBLISHING_LINEAGE_LIMIT = 1;
 
 export type StaffPublishingServiceOptions = {
   now?: () => string;
+};
+
+/**
+ * Everything NovelX has published of one Chapter, and whether it is still
+ * distributing it: the evidence a revision or a takedown is answered for by.
+ */
+export type ChapterPublicationRecord = {
+  chapterId: string;
+  /** Every version, newest first. Nothing is ever taken out of this. */
+  versions: PublishedSnapshot[];
+  takedown?: ChapterTakedown;
 };
 
 /**
@@ -171,17 +187,10 @@ export class StaffPublishingService {
           this.staffCmsRepository,
           input,
         );
-        const [published, schedule, lineage] = await Promise.all([
-          this.publishingRepository.listPublishedChapters(series.id),
+        const [publishedChapterNumbers, schedule, lineage] = await Promise.all([
+          this.publishingRepository.publishedChapterNumbers(series.id),
           this.publishingRepository.findSchedule(draft.id),
-          this.provenanceRepository.listForTarget({
-            target: {
-              kind: "chapter-draft",
-              id: draft.id,
-              seriesId: draft.seriesId,
-            },
-            limit: PUBLISHING_LINEAGE_LIMIT,
-          }),
+          this.draftLineage(draft),
         ]);
 
         const snapshot = domainRule(() =>
@@ -189,34 +198,269 @@ export class StaffPublishingService {
             series,
             draft,
             actor,
-            publishedChapterNumbers: published.map(
-              (chapter) => chapter.chapterNumber,
-            ),
+            publishedChapterNumbers,
             lineage,
             ...(schedule ? { schedule } : {}),
             publishedAt: this.now(),
           }),
         );
 
-        // The domain refuses a Chapter the Series already shows, and the
-        // repository refuses a version it already holds. Two operators
-        // publishing at once can both pass the first and only one the second.
-        if (
-          (await this.publishingRepository.publish(snapshot)) !== "published"
-        ) {
-          throw new ConflictException(
-            `Chapter ${snapshot.chapterNumber} of Series ${series.id} is already published`,
-          );
-        }
-
-        await this.provenanceRecorder.record({
+        return this.publishSnapshot({
           actor,
+          snapshot,
           action: "published-snapshot.publish",
-          subject: publishedSnapshotProvenance(snapshot),
         });
-
-        return snapshot;
       },
     );
   }
+
+  /**
+   * Fixes a Chapter after publication by publishing a further version of it.
+   *
+   * The snapshot readers saw is read and left alone (ADR-0003): the fix is a new
+   * version carrying the reason and the snapshot it replaced, so the public text
+   * and why it changed are answerable from the same record afterwards.
+   */
+  async reviseChapter(input: {
+    principal: RequestPrincipal;
+    seriesId: string;
+    chapterId: string;
+    reason: unknown;
+  }): Promise<PublishedSnapshot> {
+    const reason = requiredReason(
+      input.reason,
+      "revising a published Chapter needs the reason it was fixed",
+    );
+
+    return this.gate.run(
+      input.principal,
+      {
+        action: "staff.published-chapter.revise",
+        target: staffAuditTarget("published-chapter", input.chapterId),
+        permission: "chapter:publish",
+        reason,
+      },
+      async (actor) => {
+        const { series, draft } = await requireSeriesChapter(
+          this.staffCmsRepository,
+          input,
+        );
+        const [versions, takedown, lineage] = await Promise.all([
+          this.publishingRepository.listChapterVersions({
+            seriesId: series.id,
+            chapterId: draft.id,
+          }),
+          this.publishingRepository.findTakedown(draft.id),
+          this.draftLineage(draft),
+        ]);
+
+        const previousSnapshot = domainRule(() =>
+          requirePublished(versions[0], series.id, draft.id),
+        );
+        const snapshot = domainRule(() =>
+          revisePublishedChapter({
+            series,
+            previousSnapshot,
+            fixedDraft: draft,
+            actor,
+            lineage,
+            reason,
+            ...(takedown ? { takedown } : {}),
+            publishedAt: this.now(),
+          }),
+        );
+
+        return this.publishSnapshot({
+          actor,
+          snapshot,
+          action: "published-snapshot.revise",
+        });
+      },
+    );
+  }
+
+  /**
+   * Stops distributing a published Chapter, without deleting any of it.
+   *
+   * Repeating a takedown changes nothing, like repeating an approval: the record
+   * names the Staff Account that took the decision, and a second attempt must
+   * not move that to whoever came last.
+   */
+  async takeDownChapter(input: {
+    principal: RequestPrincipal;
+    seriesId: string;
+    chapterId: string;
+    reason: unknown;
+  }): Promise<ChapterTakedown> {
+    const reason = requiredReason(
+      input.reason,
+      "taking a Chapter down needs the reason distribution stopped",
+    );
+
+    return this.gate.run(
+      input.principal,
+      {
+        action: "staff.published-chapter.takedown",
+        target: staffAuditTarget("published-chapter", input.chapterId),
+        permission: "chapter:takedown",
+        reason,
+      },
+      async (actor) => {
+        const { series, draft } = await requireSeriesChapter(
+          this.staffCmsRepository,
+          input,
+        );
+        const [versions, held] = await Promise.all([
+          this.publishingRepository.listChapterVersions({
+            seriesId: series.id,
+            chapterId: draft.id,
+          }),
+          this.publishingRepository.findTakedown(draft.id),
+        ]);
+
+        if (held) {
+          return held;
+        }
+
+        const snapshot = domainRule(() =>
+          requirePublished(versions[0], series.id, draft.id),
+        );
+        const takedown = domainRule(() =>
+          takeDownPublishedChapter({
+            snapshot,
+            actor,
+            reason,
+            takenDownAt: this.now(),
+          }),
+        );
+
+        await this.publishingRepository.takeDown(takedown);
+        await this.provenanceRecorder.record({
+          actor,
+          action: "published-snapshot.takedown",
+          subject: publishedSnapshotProvenance(snapshot),
+        });
+
+        return takedown;
+      },
+    );
+  }
+
+  /**
+   * Everything NovelX has published of one Chapter, and whether it is still
+   * distributing it.
+   *
+   * This is where a revision or a takedown is answered for: every version is
+   * here, newest first, each naming the Staff Account that published it, the
+   * lineage it traced, and — from the second version on — the reason it replaced
+   * the one before. Nothing is ever taken out of it.
+   */
+  async readPublicationRecord(input: {
+    principal: RequestPrincipal;
+    seriesId: string;
+    chapterId: string;
+  }): Promise<ChapterPublicationRecord> {
+    return this.gate.run(
+      input.principal,
+      {
+        action: "staff.published-chapter.read",
+        target: staffAuditTarget("published-chapter", input.chapterId),
+        permission: "series:read",
+      },
+      async () => {
+        const { series, draft } = await requireSeriesChapter(
+          this.staffCmsRepository,
+          input,
+        );
+        const [versions, takedown] = await Promise.all([
+          this.publishingRepository.listChapterVersions({
+            seriesId: series.id,
+            chapterId: draft.id,
+          }),
+          this.publishingRepository.findTakedown(draft.id),
+        ]);
+
+        return {
+          chapterId: draft.id,
+          versions,
+          ...(takedown ? { takedown } : {}),
+        };
+      },
+    );
+  }
+
+  /**
+   * Writes a version and appends the lineage for it.
+   *
+   * The domain refuses a Chapter the Series already shows, and the repository
+   * refuses a version it already holds. Two operators publishing at once can
+   * both pass the first and only one the second, so the write answers whether
+   * it wrote rather than assuming it did.
+   */
+  private async publishSnapshot(input: {
+    actor: StaffPrincipal;
+    snapshot: PublishedSnapshot;
+    action: "published-snapshot.publish" | "published-snapshot.revise";
+  }): Promise<PublishedSnapshot> {
+    const { snapshot } = input;
+
+    if ((await this.publishingRepository.publish(snapshot)) !== "published") {
+      throw new ConflictException(
+        `version ${snapshot.version} of Chapter ${snapshot.chapterId} is already published`,
+      );
+    }
+
+    await this.provenanceRecorder.record({
+      actor: input.actor,
+      action: input.action,
+      subject: publishedSnapshotProvenance(snapshot),
+    });
+
+    return snapshot;
+  }
+
+  /** The lineage entry a snapshot's content traces, as the ledger holds it. */
+  private draftLineage(draft: ChapterDraft) {
+    return this.provenanceRepository.listForTarget({
+      target: {
+        kind: "chapter-draft",
+        id: draft.id,
+        seriesId: draft.seriesId,
+      },
+      limit: PUBLISHING_LINEAGE_LIMIT,
+    });
+  }
+}
+
+/**
+ * The Chapter a revision or a takedown acts on has to be one readers were given
+ * in the first place. Named as a publication refusal so it reads beside
+ * "already published" rather than as a missing route.
+ */
+function requirePublished(
+  snapshot: PublishedSnapshot | undefined,
+  seriesId: string,
+  chapterId: string,
+): PublishedSnapshot {
+  if (!snapshot) {
+    throw new PublicationRefusedError(
+      "chapter-not-published",
+      `Chapter ${chapterId} of Series ${seriesId} has never been published`,
+    );
+  }
+
+  return snapshot;
+}
+
+/**
+ * The reason an operation is only accountable with. It is read before the gate
+ * runs so it reaches the Staff Audit Record, which is where a revision and a
+ * takedown are answered for after the fact.
+ */
+function requiredReason(reason: unknown, message: string): string {
+  if (typeof reason !== "string" || !reason.trim()) {
+    throw new BadRequestException(message);
+  }
+
+  return reason;
 }

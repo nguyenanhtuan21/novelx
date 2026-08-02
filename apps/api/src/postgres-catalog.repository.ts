@@ -24,9 +24,9 @@ type SeriesRow = {
  * published lookup per Series.
  *
  * A Chapter read is the same question the publishing side already answers —
- * the newest public version of this Chapter — so it is asked there rather than
- * written out a second time: two copies of that query are two chances for one
- * of them to forget `publicly_readable`.
+ * the newest version of this Chapter that is still being distributed — so it is
+ * asked there rather than written out a second time: two copies of that query
+ * are two chances for one of them to forget the takedown.
  */
 export class PostgresCatalogRepository implements CatalogRepository {
   private readonly pool: Pool;
@@ -48,13 +48,17 @@ export class PostgresCatalogRepository implements CatalogRepository {
               first_public_chapter.chapter_id as first_public_chapter_id
          from series s
          join lateral (
-           select chapter_id
-             from published_snapshots
-            where series_id = s.id and publicly_readable = true
-            order by chapter_number asc, version desc
+           select ps.chapter_id
+             from published_snapshots ps
+            where ps.series_id = s.id
+              and not exists (
+                select 1
+                  from chapter_takedowns t
+                 where t.chapter_id = ps.chapter_id
+              )
+            order by ps.chapter_number asc, ps.version desc
             limit 1
          ) first_public_chapter on true
-        where s.takedown_state = 'available'
         order by s.title`,
     );
 
@@ -73,6 +77,6 @@ export class PostgresCatalogRepository implements CatalogRepository {
     seriesId: string;
     chapterId: string;
   }): Promise<PublishedSnapshot | undefined> {
-    return this.published.findPublishedChapter(input);
+    return this.published.findDistributedChapter(input);
   }
 }

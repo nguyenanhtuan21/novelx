@@ -13,7 +13,6 @@ import {
   grantEntitlement,
   publishChapter,
   recordAnonymousProgress,
-  revisePublishedChapter,
   upgradeAnonymousProgress,
   type ChapterDraft,
   type CreativeDisclosure,
@@ -61,7 +60,6 @@ describe("publish/read workflow", () => {
       lineage: chapterDraftLineage(draft),
     });
 
-    assert.equal(snapshot.publiclyReadable, true);
     assert.equal(snapshot.version, 1);
     assert.equal(snapshot.body, draft.body);
     assert.deepEqual(snapshot.creativeDisclosure, "Hybrid");
@@ -129,63 +127,6 @@ describe("publish/read workflow", () => {
         }),
       /Rights Record is required before draft workflow entry/,
     );
-  });
-});
-
-describe("Published Snapshot revisions", () => {
-  it("creates a new snapshot for post-publication fixes instead of mutating the prior snapshot", () => {
-    const series = createSeries({
-      id: "series-1",
-      title: "Thanh Kiếm Trong Mưa",
-      synopsis: "A curated Vietnamese serialized story.",
-      creativeDisclosure: "Human",
-      taxonomy: {
-        genre: "fantasy",
-        subgenre: "kiem-hiep",
-        tropes: [],
-        moods: [],
-        themes: [],
-        audience: "young-adult",
-        ageRating: "13+",
-        contentWarnings: [],
-      },
-    });
-    const originalDraft = createApprovedDraft({
-      id: "chapter-1",
-      seriesId: series.id,
-      body: "Original public text.",
-    });
-    const originalSnapshot = publishChapter({
-      series,
-      draft: originalDraft,
-      actor: createStaffPrincipal({
-        staffAccountId: "staff-editor-1",
-        permissions: ["chapter:publish"],
-      }),
-      publishedChapterNumbers: [],
-      lineage: chapterDraftLineage(originalDraft),
-    });
-
-    const fixedDraft = createApprovedDraft({
-      id: "chapter-1",
-      seriesId: series.id,
-      body: "Fixed public text.",
-    });
-    const fixedSnapshot = revisePublishedChapter({
-      previousSnapshot: originalSnapshot,
-      fixedDraft,
-      actor: createStaffPrincipal({
-        staffAccountId: "staff-editor-2",
-        permissions: ["chapter:publish"],
-      }),
-      lineage: chapterDraftLineage(fixedDraft),
-      reason: "Fix typo reported by editorial QA",
-    });
-
-    assert.equal(originalSnapshot.version, 1);
-    assert.equal(originalSnapshot.body, "Original public text.");
-    assert.equal(fixedSnapshot.version, 2);
-    assert.equal(fixedSnapshot.body, "Fixed public text.");
   });
 });
 

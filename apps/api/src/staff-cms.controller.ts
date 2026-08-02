@@ -45,6 +45,12 @@ type ChapterDraftBody = {
   creativeDisclosure?: CreativeDisclosure;
 };
 
+/** A rewrite names what it changes; whatever it leaves out stays as it is. */
+type ChapterRevisionBody = {
+  title?: unknown;
+  body?: unknown;
+};
+
 type WorkflowMaterialBody = {
   material: WorkflowMaterial;
   use: RightsUse;
@@ -140,6 +146,23 @@ export class StaffCmsController {
       principal: staffBoundaryPrincipal({ staffAuthorization, authorization }),
       seriesId,
       draft: body,
+    });
+  }
+
+  @Put(":seriesId/chapters/:chapterId")
+  reviseChapterDraft(
+    @Param("seriesId") seriesId: string,
+    @Param("chapterId") chapterId: string,
+    @Body() body: ChapterRevisionBody,
+    @Headers(STAFF_SESSION_HEADER) staffAuthorization?: string,
+    @Headers("authorization") authorization?: string,
+  ) {
+    return this.staffCms.reviseChapterDraft({
+      principal: staffBoundaryPrincipal({ staffAuthorization, authorization }),
+      seriesId,
+      chapterId,
+      ...(body?.title === undefined ? {} : { title: body.title }),
+      ...(body?.body === undefined ? {} : { body: body.body }),
     });
   }
 
