@@ -4,6 +4,7 @@ import {
   createReaderAccount,
   getReadingProgressKey,
   type AnonymousReaderSession,
+  type Entitlement,
   type ReaderAccount,
   type ReadingProgress,
   type SeriesFollow,
@@ -21,6 +22,11 @@ type ReadingProgressRow = {
   chapter_id: string;
   scroll_position: number;
   updated_at: Date;
+};
+
+type EntitlementRow = {
+  content_id: string;
+  benefit: Entitlement["benefit"];
 };
 
 export class PostgresReaderLibraryRepository implements ReaderLibraryRepository {
@@ -106,6 +112,44 @@ export class PostgresReaderLibraryRepository implements ReaderLibraryRepository 
         input.progress.seriesId,
         input.progress.position,
         input.progress.updatedAt,
+      ],
+    );
+  }
+
+  async loadEntitlements(
+    readerAccountId: string,
+  ): Promise<Record<string, Entitlement>> {
+    const held = await this.pool.query<EntitlementRow>(
+      `select content_id, benefit
+         from reader_entitlements
+        where reader_account_id = $1`,
+      [readerAccountId],
+    );
+
+    return Object.fromEntries(
+      held.rows.map((row): [string, Entitlement] => [
+        row.content_id,
+        { contentId: row.content_id, benefit: row.benefit },
+      ]),
+    );
+  }
+
+  async grantEntitlement(input: {
+    readerAccountId: string;
+    entitlement: Entitlement;
+    grantedAt: string;
+  }): Promise<void> {
+    await this.ensureReaderAccount(input.readerAccountId);
+    await this.pool.query(
+      `insert into reader_entitlements
+         (reader_account_id, content_id, benefit, granted_at)
+       values ($1, $2, $3, $4)
+       on conflict (reader_account_id, content_id, benefit) do nothing`,
+      [
+        input.readerAccountId,
+        input.entitlement.contentId,
+        input.entitlement.benefit,
+        input.grantedAt,
       ],
     );
   }

@@ -205,6 +205,27 @@ create table if not exists anonymous_reading_progress (
 create index if not exists reader_reading_progress_series_idx
   on reader_reading_progress (reader_account_id, series_id, updated_at desc);
 
+-- Which benefit a published Chapter demands before a reader may open it. Held
+-- apart from published_snapshots because access policy is a commercial decision
+-- that changes independently of the immutable content a snapshot keeps
+-- (ADR-0020). Absent means open to every reader.
+create table if not exists chapter_entitlement_requirements (
+  chapter_id text primary key references chapter_drafts(id) on delete cascade,
+  benefit text not null check (benefit in ('public-access', 'early-access', 'ad-free'))
+);
+
+-- A reader's right to access a benefit or content unit (ADR-0020). Real
+-- payment-provider integration is deferred; this table is what a provider's
+-- webhook would eventually write, so the access check reads entitlement state
+-- rather than payment state.
+create table if not exists reader_entitlements (
+  reader_account_id text not null references reader_accounts(id) on delete cascade,
+  content_id text not null,
+  benefit text not null check (benefit in ('public-access', 'early-access', 'ad-free')),
+  granted_at timestamptz not null,
+  primary key (reader_account_id, content_id, benefit)
+);
+
 -- Privileged staff operations, including refused attempts. Append-only:
 -- nothing in the application updates or deletes a staff audit record.
 create table if not exists staff_audit_records (

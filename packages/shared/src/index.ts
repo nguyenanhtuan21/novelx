@@ -551,10 +551,100 @@ export type ReadingProgress = {
   updatedAt: string;
 };
 
+/**
+ * The benefits an Entitlement may carry: ad-free reading, early access, or the
+ * baseline public access every reader holds. NovelX models entitlement from the
+ * start, even though real payment-provider integration is deferred until the
+ * core reader, CMS, and publishing flows stabilize.
+ */
+export const ENTITLEMENT_BENEFITS = [
+  "public-access",
+  "early-access",
+  "ad-free",
+] as const;
+
+export type EntitlementBenefit = (typeof ENTITLEMENT_BENEFITS)[number];
+
 export type Entitlement = {
   contentId: string;
-  benefit: "public-access" | "early-access" | "ad-free";
+  benefit: EntitlementBenefit;
 };
+
+/**
+ * The benefit a Chapter demands before a reader may open it. Absent when a
+ * Chapter is open to every reader, present when access is gated on an
+ * Entitlement a reader holds.
+ */
+export type EntitlementRequirement = Readonly<{
+  chapterId: string;
+  benefit: EntitlementBenefit;
+}>;
+
+export const ENTITLEMENT_REQUIRED = "entitlement-required";
+
+/**
+ * The access decision a reader-facing read reaches: either the Chapter is
+ * open to this reader, or the benefit it demands and the reader lacks. The
+ * refused case carries the requirement so a client can render an upgrade-ready
+ * state without a second read.
+ */
+export type ChapterAccessDecision =
+  { granted: true } | { granted: false; requirement: EntitlementRequirement };
+
+/**
+ * A requirement a Chapter demands, validated against the benefits NovelX
+ * models. Only `createEntitlementRequirement` produces one, so a benefit
+ * invented by a caller cannot gate a Chapter.
+ */
+export function createEntitlementRequirement(input: {
+  chapterId: string;
+  benefit: EntitlementBenefit;
+}): EntitlementRequirement {
+  if (!input.chapterId?.trim()) {
+    throw new Error("Entitlement Requirement needs the Chapter it gates");
+  }
+
+  if (!ENTITLEMENT_BENEFITS.includes(input.benefit)) {
+    throw new Error(
+      `Entitlement Requirement needs a benefit: ${ENTITLEMENT_BENEFITS.join(", ")}`,
+    );
+  }
+
+  return Object.freeze({
+    chapterId: input.chapterId,
+    benefit: input.benefit,
+  });
+}
+/**
+ * Whether a reader may open a Chapter, read off the Entitlement they hold
+ * rather than any payment-provider state (ADR-0020).
+ *
+ * A Chapter with no requirement is open to every reader, anonymous included.
+ * `public-access` is the baseline every reader holds, so a Chapter demanding it
+ * stays open too — it is not a gate. Every other benefit is granted only by an
+ * entitlement whose content is the Chapter and whose benefit is the one it
+ * demands: one benefit does not stand in for another, because ad-free reading
+ * and early access answer different questions, and an entitlement for another
+ * Chapter answers none.
+ */
+export function decideChapterAccess(input: {
+  requirement: EntitlementRequirement | undefined;
+  entitlements: Readonly<Record<string, Entitlement>>;
+}): ChapterAccessDecision {
+  if (!input.requirement || input.requirement.benefit === "public-access") {
+    return { granted: true };
+  }
+
+  const { chapterId, benefit } = input.requirement;
+  const held = Object.values(input.entitlements).find(
+    (entitlement) =>
+      entitlement.contentId === chapterId && entitlement.benefit === benefit,
+  );
+
+  return held
+    ? { granted: true }
+    : { granted: false, requirement: input.requirement };
+}
 
 export type SeriesFollow = {
   seriesId: string;
@@ -2246,7 +2336,9 @@ export function createAiPersona(input: {
   fakeHumanTestimonials?: string[];
 }): AiPersona {
   if (input.canAuthenticate) {
-    throw new Error("AI Persona cannot authenticate or hold account privileges");
+    throw new Error(
+      "AI Persona cannot authenticate or hold account privileges",
+    );
   }
 
   if (

@@ -14,6 +14,7 @@ import {
 } from "@novelx/shared";
 
 import { CatalogService } from "./catalog.service.js";
+import { InMemoryEntitlementRequirementRepository } from "./in-memory-entitlement-requirement.repository.js";
 import { InMemoryReaderLibraryRepository } from "./in-memory-reader-library.repository.js";
 import { ReaderLibraryService } from "./reader-library.service.js";
 import { seededCatalogRepository } from "./seeded-catalog.fixture.js";
@@ -288,7 +289,11 @@ function isUpgradePrompt(error: unknown): boolean {
 }
 
 async function seedCatalogService(): Promise<CatalogService> {
-  return new CatalogService(await seededCatalogRepository());
+  return new CatalogService(
+    await seededCatalogRepository(),
+    new InMemoryEntitlementRequirementRepository(),
+    new InMemoryReaderLibraryRepository(),
+  );
 }
 
 async function twoSeriesCatalog(): Promise<CatalogService> {
@@ -303,21 +308,25 @@ async function twoSeriesCatalog(): Promise<CatalogService> {
     "den-long-tren-bien-may/chuong-mo-dau",
   ]);
 
-  return new CatalogService({
-    listSeries: () => [
-      ...seedSeries,
-      {
-        ...(seedSeries[0] as PublicCatalogSeries),
-        id: "den-long-tren-bien-may",
-        title: "Đèn Lồng Trên Biển Mây",
-        firstPublicChapterId: "chuong-mo-dau",
-      },
-    ],
-    getPublicChapter: (input) =>
-      publicChapters.has(`${input.seriesId}/${input.chapterId}`)
-        ? seedSnapshot
-        : undefined,
-  });
+  return new CatalogService(
+    {
+      listSeries: () => [
+        ...seedSeries,
+        {
+          ...(seedSeries[0] as PublicCatalogSeries),
+          id: "den-long-tren-bien-may",
+          title: "Đèn Lồng Trên Biển Mây",
+          firstPublicChapterId: "chuong-mo-dau",
+        },
+      ],
+      getPublicChapter: (input) =>
+        publicChapters.has(`${input.seriesId}/${input.chapterId}`)
+          ? seedSnapshot
+          : undefined,
+    },
+    new InMemoryEntitlementRequirementRepository(),
+    new InMemoryReaderLibraryRepository(),
+  );
 }
 
 function readerLibraryService(

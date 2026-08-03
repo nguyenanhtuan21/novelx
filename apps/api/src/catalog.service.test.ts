@@ -5,11 +5,21 @@ import type { PublicCatalogSeries } from "@novelx/shared";
 
 import type { CatalogRepository } from "./catalog.repository.js";
 import { CatalogService } from "./catalog.service.js";
+import { InMemoryEntitlementRequirementRepository } from "./in-memory-entitlement-requirement.repository.js";
+import { InMemoryReaderLibraryRepository } from "./in-memory-reader-library.repository.js";
 import { seededCatalogRepository } from "./seeded-catalog.fixture.js";
+
+function catalogService(catalogRepository: CatalogRepository): CatalogService {
+  return new CatalogService(
+    catalogRepository,
+    new InMemoryEntitlementRequirementRepository(),
+    new InMemoryReaderLibraryRepository(),
+  );
+}
 
 describe("Core Platform catalog API seam", () => {
   it("exposes curated Series metadata with Creative Disclosure, AI Persona, and Managed Taxonomy", async () => {
-    const service = new CatalogService(await seededCatalogRepository());
+    const service = catalogService(await seededCatalogRepository());
 
     const [series] = await service.listSeries();
 
@@ -49,7 +59,7 @@ describe("Core Platform catalog API seam", () => {
       listSeries: () => [unreadableSeries, readableSeries],
       getPublicChapter: () => undefined,
     };
-    const service = new CatalogService(repository);
+    const service = catalogService(repository);
 
     const seriesList = await service.listSeries();
 
@@ -65,7 +75,7 @@ describe("Core Platform catalog API seam", () => {
    * are how NovelX answers for the Chapter, and this route asks for no session.
    */
   it("serves the reader-facing part of a Published Snapshot and no more", async () => {
-    const service = new CatalogService(await seededCatalogRepository());
+    const service = catalogService(await seededCatalogRepository());
 
     const chapter = await service.getPublicChapter({
       seriesId: "thanh-kiem-trong-mua",
