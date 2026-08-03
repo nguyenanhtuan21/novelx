@@ -143,7 +143,10 @@ describe("governed Series in the staff CMS", () => {
 
       assert.equal(created.status, 201, JSON.stringify(created.body));
       assert.equal(created.body.creativeDisclosure, "AI-Assisted");
-      assert.equal(created.body.aiPersona?.displayName, "May Ke Chuyen Mua Kiem");
+      assert.equal(
+        created.body.aiPersona?.displayName,
+        "May Ke Chuyen Mua Kiem",
+      );
       assert.equal(created.body.aiPersona?.canAuthenticate, false);
 
       const refused = await api<{ message: string }>(
@@ -164,7 +167,10 @@ describe("governed Series in the staff CMS", () => {
       );
 
       assert.equal(refused.status, 400);
-      assert.match(refused.body.message, /AI Persona must not present fake-human/);
+      assert.match(
+        refused.body.message,
+        /AI Persona must not present fake-human/,
+      );
     });
   });
 

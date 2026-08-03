@@ -102,12 +102,26 @@ class WorkflowRunContext:
 
 
 @dataclass(frozen=True)
+class WorkflowRunRecord:
+    workflow_run_id: str
+    workspace_id: str
+    workflow_type: str
+    artifact: WorkflowArtifact
+    evaluation: WorkflowEvaluation
+    provenance: ProvenanceEntry
+    approval_task: ApprovalTask
+    public_publish_blocked_by: tuple[QualityGateConditionName, ...]
+    public_publish_performed: bool
+
+
+@dataclass(frozen=True)
 class TemporalSandboxWorkflowResult:
     workflow_run: WorkflowRunContext
     artifact: WorkflowArtifact
     evaluation: WorkflowEvaluation
     provenance: ProvenanceEntry
     approval_task: ApprovalTask
+    run_record: WorkflowRunRecord
     public_publish_requested: bool
     public_publish_blocked_by: tuple[QualityGateConditionName, ...]
 
@@ -273,14 +287,28 @@ def _run_temporal_sandbox_request(
         workflow_run_id=workflow_run.id,
     )
 
+    public_publish_blocked_by: tuple[QualityGateConditionName, ...] = ("humanApproval",)
+    run_record = WorkflowRunRecord(
+        workflow_run_id=workflow_run.id,
+        workspace_id=workflow_run.workspace_id,
+        workflow_type=workflow_run.workflow_type,
+        artifact=artifact,
+        evaluation=base_result.evaluation,
+        provenance=provenance,
+        approval_task=base_result.approval_task,
+        public_publish_blocked_by=public_publish_blocked_by,
+        public_publish_performed=False,
+    )
+
     return TemporalSandboxWorkflowResult(
         workflow_run=workflow_run,
         artifact=artifact,
         evaluation=base_result.evaluation,
         provenance=provenance,
         approval_task=base_result.approval_task,
+        run_record=run_record,
         public_publish_requested=request.public_publish_requested,
-        public_publish_blocked_by=("humanApproval",),
+        public_publish_blocked_by=public_publish_blocked_by,
     )
 
 
