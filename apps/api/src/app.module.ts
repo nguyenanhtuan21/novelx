@@ -6,7 +6,12 @@ import {
 } from "./catalog.repository.js";
 import { CatalogController } from "./catalog.controller.js";
 import { CatalogService } from "./catalog.service.js";
+import {
+  ENTITLEMENT_REQUIREMENT_REPOSITORY,
+  type EntitlementRequirementRepository,
+} from "./entitlement-requirement.repository.js";
 import { HealthController } from "./health.controller.js";
+import { InMemoryEntitlementRequirementRepository } from "./in-memory-entitlement-requirement.repository.js";
 import { InMemoryProvenanceRepository } from "./in-memory-provenance.repository.js";
 import { InMemoryPublishingRepository } from "./in-memory-publishing.repository.js";
 import { InMemoryReaderLibraryRepository } from "./in-memory-reader-library.repository.js";
@@ -14,6 +19,7 @@ import { InMemoryRightsRepository } from "./in-memory-rights.repository.js";
 import { InMemoryStaffAuditRepository } from "./in-memory-staff-audit.repository.js";
 import { InMemoryStaffCmsRepository } from "./in-memory-staff-cms.repository.js";
 import { PostgresCatalogRepository } from "./postgres-catalog.repository.js";
+import { PostgresEntitlementRequirementRepository } from "./postgres-entitlement-requirement.repository.js";
 import { PostgresProvenanceRepository } from "./postgres-provenance.repository.js";
 import { PostgresPublishingRepository } from "./postgres-publishing.repository.js";
 import { PostgresReaderLibraryRepository } from "./postgres-reader-library.repository.js";
@@ -68,6 +74,8 @@ import { StaffRightsService } from "./staff-rights.service.js";
 import { PostgresStaffCmsRepository } from "./postgres-staff-cms.repository.js";
 import { StaffController } from "./staff.controller.js";
 import { StaffService } from "./staff.service.js";
+import { StaffEntitlementController } from "./staff-entitlement.controller.js";
+import { StaffEntitlementService } from "./staff-entitlement.service.js";
 
 @Module({
   controllers: [
@@ -76,6 +84,7 @@ import { StaffService } from "./staff.service.js";
     ReaderLibraryController,
     StaffCmsController,
     StaffController,
+    StaffEntitlementController,
     StaffProvenanceController,
     StaffPublishingController,
     StaffQualityGateController,
@@ -125,9 +134,30 @@ import { StaffService } from "./staff.service.js";
     },
     {
       provide: CatalogService,
-      useFactory: (catalogRepository: CatalogRepository) =>
-        new CatalogService(catalogRepository),
-      inject: [CATALOG_REPOSITORY],
+      useFactory: (
+        catalogRepository: CatalogRepository,
+        entitlementRequirementRepository: EntitlementRequirementRepository,
+        readerLibraryRepository: ReaderLibraryRepository,
+      ) =>
+        new CatalogService(
+          catalogRepository,
+          entitlementRequirementRepository,
+          readerLibraryRepository,
+        ),
+      inject: [
+        CATALOG_REPOSITORY,
+        ENTITLEMENT_REQUIREMENT_REPOSITORY,
+        READER_LIBRARY_REPOSITORY,
+      ],
+    },
+    {
+      provide: ENTITLEMENT_REQUIREMENT_REPOSITORY,
+      useFactory: () =>
+        process.env.DATABASE_URL
+          ? new PostgresEntitlementRequirementRepository(
+              process.env.DATABASE_URL,
+            )
+          : new InMemoryEntitlementRequirementRepository(),
     },
     {
       provide: READER_LIBRARY_REPOSITORY,
@@ -299,6 +329,27 @@ import { StaffService } from "./staff.service.js";
         rightsRepository: RightsRepository,
       ) => new StaffRightsService(gate, rightsRepository),
       inject: [StaffOperationGate, RIGHTS_REPOSITORY],
+    },
+    {
+      provide: StaffEntitlementService,
+      useFactory: (
+        gate: StaffOperationGate,
+        staffCmsRepository: StaffCmsRepository,
+        entitlementRequirementRepository: EntitlementRequirementRepository,
+        readerLibraryRepository: ReaderLibraryRepository,
+      ) =>
+        new StaffEntitlementService(
+          gate,
+          staffCmsRepository,
+          entitlementRequirementRepository,
+          readerLibraryRepository,
+        ),
+      inject: [
+        StaffOperationGate,
+        STAFF_CMS_REPOSITORY,
+        ENTITLEMENT_REQUIREMENT_REPOSITORY,
+        READER_LIBRARY_REPOSITORY,
+      ],
     },
   ],
 })

@@ -1,6 +1,10 @@
-import { Controller, Get, Inject, Param } from "@nestjs/common";
+import { Controller, Get, Headers, Inject, Param } from "@nestjs/common";
 
 import { CatalogService } from "./catalog.service.js";
+import {
+  readerRequestPrincipal,
+  readerSessionSecret,
+} from "./reader-principal.js";
 
 @Controller("catalog")
 export class CatalogController {
@@ -19,10 +23,18 @@ export class CatalogController {
   }
 
   @Get("series/:seriesId/chapters/:chapterId")
-  getPublicChapter(
+  readPublicChapter(
     @Param("seriesId") seriesId: string,
     @Param("chapterId") chapterId: string,
+    @Headers("authorization") authorization?: string,
   ) {
-    return this.catalogService.getPublicChapter({ seriesId, chapterId });
+    return this.catalogService.readPublicChapter({
+      seriesId,
+      chapterId,
+      principal: readerRequestPrincipal({
+        authorization,
+        secret: readerSessionSecret(),
+      }),
+    });
   }
 }

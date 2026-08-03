@@ -136,6 +136,36 @@ Chuỗi thứ tự publish đọc từ mọi Chapter Series đã từng publish,
 
 `GET .../publication` trả về mọi version của Chapter, mới nhất trước, kèm takedown nếu có. Nó chỉ đọc và không lọc bao giờ — đó là điều làm nó thành bằng chứng chứ không phải một khung nhìn.
 
+## Entitlement
+
+NovelX mô hình Entitlement từ đầu, dù tích hợp payment-provider thật bị hoãn cho đến khi các luồng reader, CMS, và publishing ổn định. Access check đọc state Entitlement reader đang giữ chứ không đọc state của payment provider. Xem `docs/adr/0020-access-reads-entitlement-state-not-payment-provider-state.md`.
+
+Một Chapter không có requirement thì mở cho mọi reader (kể cả anonymous). Một Chapter được mark demand một benefit thì chỉ reader giữ entitlement khớp mới đọc được; reader thiếu entitlement nhận `402 Payment Required` kèm body rõ ràng để render upgrade prompt.
+
+| Thao tác                     | Endpoint                                                      | Permission          |
+| ---------------------------- | ------------------------------------------------------------- | ------------------- |
+| Mark Chapter yêu Entitlement | `PUT /staff/series/:seriesId/chapters/:chapterId/entitlement` | `entitlement:write` |
+| Cấp Entitlement cho reader   | `POST /staff/reader-accounts/:readerAccountId/entitlements`   | `entitlement:write` |
+
+Body của lần mark nêu benefit Chapter demands:
+
+```json
+{ "benefit": "early-access" }
+```
+
+`benefit` là một trong `public-access`, `early-access`, `ad-free`. `public-access` là baseline mọi reader đều có nên không bao giờ gate. Cấp entitlement là stub thay cho payment provider: một provider webhook sẽ ghi vào cùng nơi khi tích hợp thật xuất hiện, và read path không thay đổi.
+
+Reader đọc Chapter gated mà thiếu entitlement nhận:
+
+```json
+{
+  "error": "entitlement-required",
+  "benefit": "early-access",
+  "contentId": "chuong-2",
+  "upgradePath": "/reader/accounts"
+}
+```
+
 ## Đường Dẫn Kiểm Tra Nhanh
 
 - Web: `GET /health` trả về `{ "service": "novelx-web", "status": "ok" }`.

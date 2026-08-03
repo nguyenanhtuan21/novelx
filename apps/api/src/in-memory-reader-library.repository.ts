@@ -2,10 +2,12 @@ import {
   createAnonymousReaderSession,
   createReaderAccount,
   followSeries,
+  grantEntitlement,
   recordAnonymousProgress,
   recordReaderProgress,
   unfollowSeries,
   type AnonymousReaderSession,
+  type Entitlement,
   type ReaderAccount,
   type ReadingProgress,
   type SeriesFollow,
@@ -52,6 +54,25 @@ export class InMemoryReaderLibraryRepository implements ReaderLibraryRepository 
       recordReaderProgress(
         this.readerAccount(input.readerAccountId),
         input.progress,
+      ),
+    );
+  }
+
+  async loadEntitlements(
+    readerAccountId: string,
+  ): Promise<Record<string, Entitlement>> {
+    return this.readerAccount(readerAccountId).entitlements;
+  }
+
+  async grantEntitlement(input: {
+    readerAccountId: string;
+    entitlement: Entitlement;
+    grantedAt: string;
+  }): Promise<void> {
+    this.saveReaderAccount(
+      grantEntitlement(
+        this.readerAccount(input.readerAccountId),
+        input.entitlement,
       ),
     );
   }

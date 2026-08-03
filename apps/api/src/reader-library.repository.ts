@@ -1,5 +1,6 @@
 import type {
   AnonymousReaderSession,
+  Entitlement,
   ReaderAccount,
   ReadingProgress,
   SeriesFollow,
@@ -30,6 +31,20 @@ export type ReaderLibraryRepository = {
   recordReaderProgress(input: {
     readerAccountId: string;
     progress: ReadingProgress;
+  }): Promise<void>;
+
+  /**
+   * The entitlements a reader holds, keyed by content id. Real payment-provider
+   * integration is deferred (ADR-0020); a grant writes here, and the access
+   * check reads here, so neither depends on payment state.
+   */
+  loadEntitlements(
+    readerAccountId: string,
+  ): Promise<Record<string, Entitlement>>;
+  grantEntitlement(input: {
+    readerAccountId: string;
+    entitlement: Entitlement;
+    grantedAt: string;
   }): Promise<void>;
 
   loadAnonymousSession(
