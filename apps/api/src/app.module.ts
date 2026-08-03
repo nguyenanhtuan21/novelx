@@ -10,10 +10,16 @@ import {
   ENTITLEMENT_REQUIREMENT_REPOSITORY,
   type EntitlementRequirementRepository,
 } from "./entitlement-requirement.repository.js";
+import { BaselineGuardrailSignalsSource } from "./baseline-guardrail-signals-source.js";
+import {
+  GUARDRAIL_SIGNALS_SOURCE,
+  type GuardrailSignalsSource,
+} from "./guardrail-signals-source.js";
 import { HealthController } from "./health.controller.js";
 import { InMemoryEntitlementRequirementRepository } from "./in-memory-entitlement-requirement.repository.js";
 import { InMemoryProvenanceRepository } from "./in-memory-provenance.repository.js";
 import { InMemoryPublishingRepository } from "./in-memory-publishing.repository.js";
+import { InMemoryReadingEngagementRepository } from "./in-memory-reading-engagement.repository.js";
 import { InMemoryReaderLibraryRepository } from "./in-memory-reader-library.repository.js";
 import { InMemoryRightsRepository } from "./in-memory-rights.repository.js";
 import { InMemoryStaffAuditRepository } from "./in-memory-staff-audit.repository.js";
@@ -25,6 +31,10 @@ import { PostgresPublishingRepository } from "./postgres-publishing.repository.j
 import { PostgresReaderLibraryRepository } from "./postgres-reader-library.repository.js";
 import { PostgresRightsRepository } from "./postgres-rights.repository.js";
 import { PostgresStaffAuditRepository } from "./postgres-staff-audit.repository.js";
+import {
+  READING_ENGAGEMENT_REPOSITORY,
+  type ReadingEngagementRepository,
+} from "./reading-engagement.repository.js";
 import { ProvenanceRecorder } from "./provenance-recorder.js";
 import { PublishedCatalogRepository } from "./published-catalog.repository.js";
 import {
@@ -76,6 +86,8 @@ import { StaffController } from "./staff.controller.js";
 import { StaffService } from "./staff.service.js";
 import { StaffEntitlementController } from "./staff-entitlement.controller.js";
 import { StaffEntitlementService } from "./staff-entitlement.service.js";
+import { StaffMetricsController } from "./staff-metrics.controller.js";
+import { StaffMetricsService } from "./staff-metrics.service.js";
 
 @Module({
   controllers: [
@@ -85,6 +97,7 @@ import { StaffEntitlementService } from "./staff-entitlement.service.js";
     StaffCmsController,
     StaffController,
     StaffEntitlementController,
+    StaffMetricsController,
     StaffProvenanceController,
     StaffPublishingController,
     StaffQualityGateController,
@@ -171,8 +184,26 @@ import { StaffEntitlementService } from "./staff-entitlement.service.js";
       useFactory: (
         readerLibraryRepository: ReaderLibraryRepository,
         catalogService: CatalogService,
-      ) => new ReaderLibraryService(readerLibraryRepository, catalogService),
-      inject: [READER_LIBRARY_REPOSITORY, CatalogService],
+        readingEngagementRepository: ReadingEngagementRepository,
+      ) =>
+        new ReaderLibraryService(
+          readerLibraryRepository,
+          catalogService,
+          readingEngagementRepository,
+        ),
+      inject: [
+        READER_LIBRARY_REPOSITORY,
+        CatalogService,
+        READING_ENGAGEMENT_REPOSITORY,
+      ],
+    },
+    {
+      provide: READING_ENGAGEMENT_REPOSITORY,
+      useFactory: () => new InMemoryReadingEngagementRepository(),
+    },
+    {
+      provide: GUARDRAIL_SIGNALS_SOURCE,
+      useFactory: () => new BaselineGuardrailSignalsSource(),
     },
     {
       provide: STAFF_ACCOUNT_DIRECTORY,
@@ -349,6 +380,24 @@ import { StaffEntitlementService } from "./staff-entitlement.service.js";
         STAFF_CMS_REPOSITORY,
         ENTITLEMENT_REQUIREMENT_REPOSITORY,
         READER_LIBRARY_REPOSITORY,
+      ],
+    },
+    {
+      provide: StaffMetricsService,
+      useFactory: (
+        gate: StaffOperationGate,
+        readingEngagementRepository: ReadingEngagementRepository,
+        guardrailSignalsSource: GuardrailSignalsSource,
+      ) =>
+        new StaffMetricsService(
+          gate,
+          readingEngagementRepository,
+          guardrailSignalsSource,
+        ),
+      inject: [
+        StaffOperationGate,
+        READING_ENGAGEMENT_REPOSITORY,
+        GUARDRAIL_SIGNALS_SOURCE,
       ],
     },
   ],

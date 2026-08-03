@@ -2561,3 +2561,236 @@ function validateManagedTaxonomy(taxonomy: ManagedTaxonomy): void {
     }
   }
 }
+
+// === Weekly Engaged Reading Hours and guardrails ===
+
+/**
+ * A chunk of engaged reading time a reader spent on a Chapter: the seconds they
+ * read for, and the position they reached. Engagements arrive as debounced
+ * events rather than per-scroll, so Weekly Engaged Reading Hours measures
+ * reading rather than how often the page fired (CONTEXT: Weekly Engaged Reading
+ * Hours).
+ *
+ * Only `acceptReadingEngagement` produces one, so a number a client made up
+ * cannot reach the metric without passing the boundary's noise checks.
+ */
+export type ReadingEngagement = Readonly<{
+  /** Present when a Reader Account reported the engagement. */
+  readerAccountId?: string;
+  /** Present when an Anonymous Reader Session reported the engagement. */
+  anonymousSessionId?: string;
+  seriesId: string;
+  chapterId: string;
+  /** Engaged reading seconds this event reports, bounded at the boundary. */
+  engagedSeconds: number;
+  /** Where in the Chapter the reader had reached when the event fired. */
+  position: number;
+  occurredAt: string;
+}>;
+
+/**
+ * The longest single engagement the boundary accepts. A chunk longer than this
+ * is noise rather than reading: a reader who left a visible tab open is not the
+ * same signal as one who read, and an event claiming hours is exactly the
+ * obvious case the boundary exists to keep out of the north-star metric.
+ */
+export const READING_ENGAGEMENT_MAX_SECONDS = 30 * 60;
+
+export const READING_ENGAGEMENT_REFUSALS = [
+  "reading-engagement-needs-a-chapter",
+  "reading-engagement-needs-a-reader",
+  "reading-engagement-needs-valid-seconds",
+  "reading-engagement-needs-valid-position",
+  "reading-engagement-needs-valid-time",
+] as const;
+
+export type ReadingEngagementRefusal =
+  (typeof READING_ENGAGEMENT_REFUSALS)[number];
+
+/**
+ * Refusal of a reading engagement event the boundary kept out of the metric.
+ * Each code names a kind of obvious noise so a caller can tell a missing
+ * Chapter from an absurd duration.
+ */
+export class ReadingEngagementRefusedError extends Error {
+  readonly code: ReadingEngagementRefusal;
+
+  constructor(code: ReadingEngagementRefusal, message: string) {
+    super(message);
+    this.name = "ReadingEngagementRefusedError";
+    this.code = code;
+  }
+}
+
+/**
+ * Admits a reading engagement event at the application boundary, refusing the
+ * obvious noise cases so Weekly Engaged Reading Hours is built from legitimate
+ * reader activity rather than whatever a client sent.
+ *
+ * The reader identity is attached by the caller, which has already resolved the
+ * principal; this function guards the numbers. A chunk with no reading time, a
+ * negative position, an unparseable time, or a duration longer than a reader
+ * could read in one sitting is refused, because each is what an event fired on
+ * every pixel scroll — or not fired by a reader at all — would look like.
+ */
+export function acceptReadingEngagement(input: {
+  readerAccountId?: string;
+  anonymousSessionId?: string;
+  seriesId: string;
+  chapterId: string;
+  engagedSeconds: number;
+  position: number;
+  occurredAt: string;
+}): ReadingEngagement {
+  const hasReaderAccount = Boolean(input.readerAccountId?.trim());
+  const hasAnonymousSession = Boolean(input.anonymousSessionId?.trim());
+
+  if (hasReaderAccount === hasAnonymousSession) {
+    throw new ReadingEngagementRefusedError(
+      "reading-engagement-needs-a-reader",
+      "reading engagement needs exactly one Reader Account or Anonymous Reader Session",
+    );
+  }
+
+  if (!input.seriesId?.trim() || !input.chapterId?.trim()) {
+    throw new ReadingEngagementRefusedError(
+      "reading-engagement-needs-a-chapter",
+      "reading engagement needs the Series and Chapter it was read on",
+    );
+  }
+
+  if (!Number.isFinite(input.engagedSeconds) || input.engagedSeconds <= 0) {
+    throw new ReadingEngagementRefusedError(
+      "reading-engagement-needs-valid-seconds",
+      "reading engagement needs a positive number of engaged seconds",
+    );
+  }
+
+  if (input.engagedSeconds > READING_ENGAGEMENT_MAX_SECONDS) {
+    throw new ReadingEngagementRefusedError(
+      "reading-engagement-needs-valid-seconds",
+      `reading engagement cannot exceed ${READING_ENGAGEMENT_MAX_SECONDS} seconds in one event`,
+    );
+  }
+
+  if (!Number.isFinite(input.position) || input.position < 0) {
+    throw new ReadingEngagementRefusedError(
+      "reading-engagement-needs-valid-position",
+      "reading engagement needs a non-negative position",
+    );
+  }
+
+  if (Number.isNaN(Date.parse(input.occurredAt))) {
+    throw new ReadingEngagementRefusedError(
+      "reading-engagement-needs-valid-time",
+      "reading engagement needs the time it occurred at",
+    );
+  }
+
+  return Object.freeze({
+    ...(input.readerAccountId?.trim()
+      ? { readerAccountId: input.readerAccountId }
+      : {}),
+    ...(input.anonymousSessionId?.trim()
+      ? { anonymousSessionId: input.anonymousSessionId }
+      : {}),
+    seriesId: input.seriesId,
+    chapterId: input.chapterId,
+    engagedSeconds: input.engagedSeconds,
+    position: input.position,
+    occurredAt: input.occurredAt,
+  });
+}
+
+/**
+ * The number of days the north-star metric reads across. It is the window the
+ * metric is named for: a reader who stops reading is not reading this week.
+ */
+export const WEEKLY_ENGAGED_READING_HOURS_WINDOW_DAYS = 7;
+
+export type WeeklyEngagedReadingHours = Readonly<{
+  weekStart: string;
+  weekEnd: string;
+  /** Total engaged seconds accepted in the window. */
+  totalEngagedSeconds: number;
+  /** The north-star metric: total valid reading time, as hours. */
+  engagedReadingHours: number;
+  /** How many engagement events the metric was read from. */
+  engagementCount: number;
+}>;
+
+/**
+ * Reads the north-star metric off the engagements accepted in a week window:
+ * total valid reading time from legitimate readers (CONTEXT: Weekly Engaged
+ * Reading Hours).
+ *
+ * It reads engaged seconds rather than counting events, because the metric is
+ * hours of reading rather than events: two five-minute chunks and one
+ * ten-minute one are the same engaged hour. Engagements outside the window are
+ * ignored, since a week is the window the metric is named for.
+ */
+export function weeklyEngagedReadingHours(input: {
+  engagements: readonly ReadingEngagement[];
+  weekStart: string;
+  weekEnd: string;
+}): WeeklyEngagedReadingHours {
+  const start = Date.parse(input.weekStart);
+  const end = Date.parse(input.weekEnd);
+  const inWindow = input.engagements.filter((engagement) => {
+    const at = Date.parse(engagement.occurredAt);
+    return at >= start && at < end;
+  });
+
+  const totalEngagedSeconds = inWindow.reduce(
+    (total, engagement) => total + engagement.engagedSeconds,
+    0,
+  );
+
+  return Object.freeze({
+    weekStart: input.weekStart,
+    weekEnd: input.weekEnd,
+    totalEngagedSeconds,
+    engagedReadingHours: round3(totalEngagedSeconds / 3600),
+    engagementCount: inWindow.length,
+  });
+}
+
+function round3(value: number): number {
+  return Math.round(value * 1000) / 1000;
+}
+
+/**
+ * The dimensions Weekly Engaged Reading Hours is interpreted alongside, so
+ * growth is read against retention, report rate, AI cost, and ad complaints
+ * rather than optimized in isolation (CONTEXT: Weekly Engaged Reading Hours).
+ */
+export const GUARDRAIL_DIMENSIONS = [
+  "d30Retention",
+  "reportRate",
+  "aiCostPerApprovedChapter",
+  "adComplaints",
+] as const;
+
+export type GuardrailDimension = (typeof GUARDRAIL_DIMENSIONS)[number];
+
+/**
+ * The guardrails the north-star metric is read against. Each is a baseline
+ * hook: a slot the metric output carries so a real source can fill it later. A
+ * guardrail with no source yet is absent rather than zero, because the absence
+ * of a measurement is not the measurement zero.
+ */
+export type GuardrailSignals = Readonly<{
+  d30Retention?: number;
+  reportRate?: number;
+  aiCostPerApprovedChapter?: number;
+  adComplaints?: number;
+}>;
+
+/**
+ * The metric output a staff or product user inspects: the north-star metric and
+ * the guardrails it is interpreted alongside, in one read.
+ */
+export type WeeklyEngagedReadingHoursMetric = Readonly<{
+  weeklyEngagedReadingHours: WeeklyEngagedReadingHours;
+  guardrails: GuardrailSignals;
+}>;

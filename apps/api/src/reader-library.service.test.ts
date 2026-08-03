@@ -15,6 +15,7 @@ import {
 
 import { CatalogService } from "./catalog.service.js";
 import { InMemoryEntitlementRequirementRepository } from "./in-memory-entitlement-requirement.repository.js";
+import { InMemoryReadingEngagementRepository } from "./in-memory-reading-engagement.repository.js";
 import { InMemoryReaderLibraryRepository } from "./in-memory-reader-library.repository.js";
 import { ReaderLibraryService } from "./reader-library.service.js";
 import { seededCatalogRepository } from "./seeded-catalog.fixture.js";
@@ -337,6 +338,7 @@ function readerLibraryService(
   return new ReaderLibraryService(
     new InMemoryReaderLibraryRepository(),
     catalogService,
+    new InMemoryReadingEngagementRepository(),
     {
       now: () => "2026-07-31T08:00:00.000Z",
       newReaderAccountId: () => `reader-upgraded-${++mintedReaderAccounts}`,

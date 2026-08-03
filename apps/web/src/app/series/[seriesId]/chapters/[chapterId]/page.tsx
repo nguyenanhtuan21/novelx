@@ -3,6 +3,7 @@ import React from "react";
 
 import { fetchPublicCorePlatformJson } from "../../../../core-platform-api";
 import { ReaderControls } from "./reader-controls";
+import { ReadingEngagementReporter } from "./reading-engagement-reporter";
 import { ReadingProgressReporter } from "./reading-progress-reporter";
 
 export const dynamic = "force-dynamic";
@@ -39,13 +40,17 @@ export default async function ChapterPage({ params }: ChapterPageProps) {
         </p>
         {chapter.aiPersona ? (
           <p>
-            AI Persona: <strong>{chapter.aiPersona.displayName}</strong> - {" "}
+            AI Persona: <strong>{chapter.aiPersona.displayName}</strong> -{" "}
             {chapter.aiPersona.disclosure}.
           </p>
         ) : null}
       </header>
       <ReaderControls />
       <ReadingProgressReporter
+        seriesId={chapter.seriesId}
+        chapterId={chapter.chapterId}
+      />
+      <ReadingEngagementReporter
         seriesId={chapter.seriesId}
         chapterId={chapter.chapterId}
       />
