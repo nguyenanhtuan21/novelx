@@ -1,5 +1,10 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
-import { publicChapter, type PublicChapter } from "@novelx/shared";
+import {
+  publicCatalogSeries,
+  publicChapter,
+  type PublicCatalogSeries,
+  type PublicChapter,
+} from "@novelx/shared";
 
 import type { CatalogRepository } from "./catalog.repository.js";
 
@@ -7,20 +12,12 @@ import type { CatalogRepository } from "./catalog.repository.js";
 export class CatalogService {
   constructor(private readonly catalogRepository: CatalogRepository) {}
 
-  async listSeries() {
+  async listSeries(): Promise<PublicCatalogSeries[]> {
     const seriesList = await this.catalogRepository.listSeries();
 
     return seriesList
       .filter((series) => series.firstPublicChapterId)
-      .map((series) => ({
-        id: series.id,
-        title: series.title,
-        synopsis: series.synopsis,
-        status: series.status,
-        creativeDisclosure: series.creativeDisclosure,
-        taxonomy: series.taxonomy,
-        firstPublicChapterId: series.firstPublicChapterId,
-      }));
+      .map((series) => publicCatalogSeries(series));
   }
 
   async getPublicSeries(input: { seriesId: string }) {

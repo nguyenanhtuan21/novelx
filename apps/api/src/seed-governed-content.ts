@@ -24,7 +24,14 @@ const seedSeries = createSeries({
   title: "Thanh Kiếm Trong Mưa",
   synopsis:
     "Một series tiên hiệp Việt Nam được biên tập theo catalog tuyển chọn của NovelX.",
-  creativeDisclosure: "Hybrid",
+  creativeDisclosure: "AI-Assisted",
+  aiPersona: {
+    id: "persona-mua-kiem",
+    displayName: "May Ke Chuyen Mua Kiem",
+    disclosure: "AI-operated creative persona",
+    managedContentLineIds: ["thanh-kiem-trong-mua"],
+    canAuthenticate: false,
+  },
   taxonomy: {
     genre: "fantasy",
     subgenre: "kiem-hiep",

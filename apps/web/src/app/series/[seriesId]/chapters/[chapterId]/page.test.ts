@@ -27,7 +27,14 @@ describe("public Chapter reader web/API seam", () => {
           title: "Mùi Mưa Đầu Tiên",
           body: "Snapshot paragraph one.\n\nSnapshot paragraph two from immutable publication.",
           version: 2,
-          creativeDisclosure: "Hybrid",
+          creativeDisclosure: "AI-Assisted",
+          aiPersona: {
+            id: "persona-mua-kiem",
+            displayName: "May Ke Chuyen Mua Kiem",
+            disclosure: "AI-operated creative persona",
+            managedContentLineIds: ["thanh-kiem-trong-mua"],
+            canAuthenticate: false,
+          },
           publishedAt: "2026-07-31T00:00:00.000Z",
         }),
         {
@@ -51,6 +58,9 @@ describe("public Chapter reader web/API seam", () => {
     ]);
     assert.match(html, /Snapshot đã xuất bản v2/);
     assert.match(html, /Mùi Mưa Đầu Tiên/);
+    assert.match(html, /AI-Assisted/);
+    assert.match(html, /May Ke Chuyen Mua Kiem/);
+    assert.match(html, /AI-operated creative persona/);
     assert.match(html, /Snapshot paragraph one\./);
     assert.match(html, /Snapshot paragraph two from immutable publication\./);
     assert.doesNotMatch(html, /prov-snapshot-2/);

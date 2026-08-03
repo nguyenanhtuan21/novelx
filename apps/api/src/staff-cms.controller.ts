@@ -9,6 +9,7 @@ import {
   Put,
 } from "@nestjs/common";
 import type {
+  AiPersona,
   CanonEntry,
   CreativeDisclosure,
   ManagedTaxonomy,
@@ -28,6 +29,7 @@ type SeriesBody = {
   title: string;
   synopsis: string;
   creativeDisclosure: CreativeDisclosure;
+  aiPersona?: AiPersona;
   taxonomy: ManagedTaxonomy;
   status?: Series["status"];
 };

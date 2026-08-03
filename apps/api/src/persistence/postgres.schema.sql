@@ -3,11 +3,14 @@ create table if not exists series (
   title text not null,
   synopsis text not null,
   creative_disclosure text not null check (creative_disclosure in ('Human', 'Hybrid', 'AI-Assisted')),
+  ai_persona jsonb,
   taxonomy jsonb not null,
   status text not null check (status in ('draft', 'active', 'completed', 'hiatus')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table series add column if not exists ai_persona jsonb;
 
 -- The governed record of a Series canon. Locked by an accountable human, whose
 -- account and time are kept together so a lock cannot half-exist.
@@ -83,6 +86,7 @@ create table if not exists published_snapshots (
   body text not null,
   version integer not null check (version > 0),
   creative_disclosure text not null check (creative_disclosure in ('Human', 'Hybrid', 'AI-Assisted')),
+  ai_persona jsonb,
   -- The lineage entry the content traced when it went public.
   provenance_ledger_entry_id text not null,
   -- Every grant that cleared this Chapter for publishing, not just one: a
@@ -98,6 +102,8 @@ create table if not exists published_snapshots (
   check ((supersedes_snapshot_id is null) = (revision_reason is null)),
   check ((version = 1) = (supersedes_snapshot_id is null))
 );
+
+alter table published_snapshots add column if not exists ai_persona jsonb;
 
 -- A published Chapter NovelX has stopped distributing, and why. Deliberately a
 -- record of its own rather than a flag on published_snapshots: a snapshot is

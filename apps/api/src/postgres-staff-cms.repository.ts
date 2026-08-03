@@ -1,5 +1,6 @@
 import { Pool } from "pg";
 import type {
+  AiPersona,
   CanonEntry,
   ChapterDraft,
   CreativeDisclosure,
@@ -17,6 +18,7 @@ type SeriesRow = {
   title: string;
   synopsis: string;
   creative_disclosure: CreativeDisclosure;
+  ai_persona: AiPersona | null;
   taxonomy: ManagedTaxonomy;
   status: Series["status"];
 };
@@ -57,12 +59,13 @@ export class PostgresStaffCmsRepository implements StaffCmsRepository {
   async saveSeries(series: Series): Promise<void> {
     await this.pool.query(
       `insert into series
-         (id, title, synopsis, creative_disclosure, taxonomy, status)
-       values ($1, $2, $3, $4, $5, $6)
+         (id, title, synopsis, creative_disclosure, ai_persona, taxonomy, status)
+       values ($1, $2, $3, $4, $5, $6, $7)
        on conflict (id) do update set
          title = excluded.title,
          synopsis = excluded.synopsis,
          creative_disclosure = excluded.creative_disclosure,
+         ai_persona = excluded.ai_persona,
          taxonomy = excluded.taxonomy,
          status = excluded.status,
          updated_at = now()`,
@@ -71,6 +74,7 @@ export class PostgresStaffCmsRepository implements StaffCmsRepository {
         series.title,
         series.synopsis,
         series.creativeDisclosure,
+        series.aiPersona ? JSON.stringify(series.aiPersona) : null,
         JSON.stringify(series.taxonomy),
         series.status,
       ],
@@ -79,7 +83,7 @@ export class PostgresStaffCmsRepository implements StaffCmsRepository {
 
   async findSeries(seriesId: string): Promise<Series | undefined> {
     const found = await this.pool.query<SeriesRow>(
-      `select id, title, synopsis, creative_disclosure, taxonomy, status
+      `select id, title, synopsis, creative_disclosure, ai_persona, taxonomy, status
          from series
         where id = $1`,
       [seriesId],
@@ -91,7 +95,7 @@ export class PostgresStaffCmsRepository implements StaffCmsRepository {
 
   async listSeries(): Promise<Series[]> {
     const found = await this.pool.query<SeriesRow>(
-      `select id, title, synopsis, creative_disclosure, taxonomy, status
+      `select id, title, synopsis, creative_disclosure, ai_persona, taxonomy, status
          from series
         order by title`,
     );
@@ -207,6 +211,7 @@ function toSeries(row: SeriesRow): Series {
     title: row.title,
     synopsis: row.synopsis,
     creativeDisclosure: row.creative_disclosure,
+    ...(row.ai_persona ? { aiPersona: row.ai_persona } : {}),
     taxonomy: row.taxonomy,
     status: row.status,
   };

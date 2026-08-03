@@ -123,6 +123,51 @@ describe("governed Series in the staff CMS", () => {
     });
   });
 
+  it("lets staff associate a transparent AI Persona with an AI-Assisted Series", async () => {
+    await withApi(async (api) => {
+      const headers = await editorHeaders(api);
+
+      const created = await api<Series>("POST", "/staff/series", {
+        headers,
+        body: {
+          ...seriesBody,
+          creativeDisclosure: "AI-Assisted",
+          aiPersona: {
+            id: "persona-mua-kiem",
+            displayName: "May Ke Chuyen Mua Kiem",
+            disclosure: "AI-operated creative persona",
+            managedContentLineIds: ["series-cms-1"],
+          },
+        },
+      });
+
+      assert.equal(created.status, 201, JSON.stringify(created.body));
+      assert.equal(created.body.creativeDisclosure, "AI-Assisted");
+      assert.equal(created.body.aiPersona?.displayName, "May Ke Chuyen Mua Kiem");
+      assert.equal(created.body.aiPersona?.canAuthenticate, false);
+
+      const refused = await api<{ message: string }>(
+        "PUT",
+        "/staff/series/series-cms-1",
+        {
+          headers,
+          body: {
+            aiPersona: {
+              id: "persona-fake-human",
+              displayName: "Tac Gia Ao",
+              disclosure: "AI-operated creative persona",
+              managedContentLineIds: ["series-cms-1"],
+              fakeHumanCredentials: "Award-winning human novelist",
+            },
+          },
+        },
+      );
+
+      assert.equal(refused.status, 400);
+      assert.match(refused.body.message, /AI Persona must not present fake-human/);
+    });
+  });
+
   it("refuses a Series that does not carry the Managed Taxonomy the catalog needs", async () => {
     await withApi(async (api) => {
       const refused = await api<{ message: string }>("POST", "/staff/series", {

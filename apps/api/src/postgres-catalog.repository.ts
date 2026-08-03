@@ -1,5 +1,7 @@
 import { Pool } from "pg";
+import { publicCatalogSeries } from "@novelx/shared";
 import type {
+  AiPersona,
   CreativeDisclosure,
   ManagedTaxonomy,
   PublicCatalogSeries,
@@ -17,6 +19,7 @@ type SeriesRow = {
   title: string;
   synopsis: string;
   creative_disclosure: CreativeDisclosure;
+  ai_persona: AiPersona | null;
   taxonomy: ManagedTaxonomy;
   status: PublicCatalogSeries["status"];
   first_public_chapter_id: string | null;
@@ -46,6 +49,7 @@ export class PostgresCatalogRepository implements CatalogRepository {
               s.title,
               s.synopsis,
               s.creative_disclosure,
+              s.ai_persona,
               s.taxonomy,
               s.status,
               first_public_chapter.chapter_id as first_public_chapter_id
@@ -60,15 +64,18 @@ export class PostgresCatalogRepository implements CatalogRepository {
         order by s.title`,
     );
 
-    return result.rows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      synopsis: row.synopsis,
-      creativeDisclosure: row.creative_disclosure,
-      taxonomy: row.taxonomy,
-      status: row.status,
-      firstPublicChapterId: row.first_public_chapter_id ?? undefined,
-    }));
+    return result.rows.map((row) =>
+      publicCatalogSeries({
+        id: row.id,
+        title: row.title,
+        synopsis: row.synopsis,
+        creativeDisclosure: row.creative_disclosure,
+        aiPersona: row.ai_persona ?? undefined,
+        taxonomy: row.taxonomy,
+        status: row.status,
+        firstPublicChapterId: row.first_public_chapter_id ?? undefined,
+      }),
+    );
   }
 
   async getPublicChapter(input: {

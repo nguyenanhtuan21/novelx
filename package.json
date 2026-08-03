@@ -16,11 +16,13 @@
     "smoke": "npm run smoke --workspaces --if-present",
     "test": "npm run test:ts && npm run test:ai",
     "test:ai": "npm --workspace @novelx/ai-factory run test",
+    "test:e2e": "playwright test",
     "test:ts": "npm --workspace @novelx/shared run test && npm --workspace @novelx/api run test && npm --workspace @novelx/web run test",
     "typecheck": "tsc -b",
     "verify": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run smoke && npm run build && npm audit"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/node": "^22.10.5",
     "eslint": "^10.8.0",
     "prettier": "^3.7.4",

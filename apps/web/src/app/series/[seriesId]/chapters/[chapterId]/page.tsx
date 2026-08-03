@@ -37,6 +37,12 @@ export default async function ChapterPage({ params }: ChapterPageProps) {
         <p>
           Công khai AI: <strong>{chapter.creativeDisclosure}</strong>.
         </p>
+        {chapter.aiPersona ? (
+          <p>
+            AI Persona: <strong>{chapter.aiPersona.displayName}</strong> - {" "}
+            {chapter.aiPersona.disclosure}.
+          </p>
+        ) : null}
       </header>
       <ReaderControls />
       <ReadingProgressReporter

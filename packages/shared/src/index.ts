@@ -113,11 +113,13 @@ export type Series = {
   title: string;
   synopsis: string;
   creativeDisclosure: CreativeDisclosure;
+  aiPersona?: AiPersona;
   taxonomy: ManagedTaxonomy;
   status: "draft" | "active" | "completed" | "hiatus";
 };
 
-export type PublicCatalogSeries = Series & {
+export type PublicCatalogSeries = Omit<Series, "aiPersona"> & {
+  aiPersona?: PublicAiPersona;
   firstPublicChapterId?: string;
 };
 
@@ -181,6 +183,11 @@ export type AiPersona = {
   managedContentLineIds: string[];
   canAuthenticate: false;
 };
+
+export type PublicAiPersona = Pick<
+  AiPersona,
+  "id" | "displayName" | "disclosure"
+>;
 
 /**
  * Something a workflow wants to work from rather than something NovelX wrote:
@@ -343,6 +350,7 @@ export type PublishedSnapshot = Readonly<{
   body: string;
   version: number;
   creativeDisclosure: CreativeDisclosure;
+  aiPersona?: AiPersona;
   /** The lineage entry this snapshot's content traced when it went public. */
   provenanceLedgerEntryId: string;
   /** Every grant that cleared this Chapter for publishing, not just one. */
@@ -395,7 +403,7 @@ export type PublicChapter = Pick<
   | "version"
   | "creativeDisclosure"
   | "publishedAt"
->;
+> & { aiPersona?: PublicAiPersona };
 
 export function publicChapter(snapshot: PublishedSnapshot): PublicChapter {
   return Object.freeze({
@@ -407,7 +415,44 @@ export function publicChapter(snapshot: PublishedSnapshot): PublicChapter {
     body: snapshot.body,
     version: snapshot.version,
     creativeDisclosure: snapshot.creativeDisclosure,
+    ...(snapshot.aiPersona
+      ? { aiPersona: publicAiPersona(snapshot.aiPersona) }
+      : {}),
     publishedAt: snapshot.publishedAt,
+  });
+}
+
+export function publicAiPersona(
+  persona: Pick<AiPersona, "id" | "displayName" | "disclosure">,
+): PublicAiPersona {
+  return Object.freeze({
+    id: persona.id,
+    displayName: persona.displayName,
+    disclosure: persona.disclosure,
+  });
+}
+
+export function publicCatalogSeries(input: {
+  id: string;
+  title: string;
+  synopsis: string;
+  creativeDisclosure: CreativeDisclosure;
+  taxonomy: ManagedTaxonomy;
+  status: Series["status"];
+  aiPersona?: Pick<AiPersona, "id" | "displayName" | "disclosure">;
+  firstPublicChapterId?: string;
+}): PublicCatalogSeries {
+  return Object.freeze({
+    id: input.id,
+    title: input.title,
+    synopsis: input.synopsis,
+    creativeDisclosure: input.creativeDisclosure,
+    taxonomy: input.taxonomy,
+    status: input.status,
+    ...(input.aiPersona ? { aiPersona: publicAiPersona(input.aiPersona) } : {}),
+    ...(input.firstPublicChapterId
+      ? { firstPublicChapterId: input.firstPublicChapterId }
+      : {}),
   });
 }
 
@@ -544,9 +589,16 @@ export function createSeries(
   input: Omit<Series, "status"> & { status?: Series["status"] },
 ): Series {
   validateManagedTaxonomy(input.taxonomy);
+  const aiPersona = normalizeAiPersona(input.aiPersona);
+  validateSeriesAiPersona(input.id, input.creativeDisclosure, aiPersona);
 
   return {
-    ...input,
+    id: input.id,
+    title: input.title,
+    synopsis: input.synopsis,
+    creativeDisclosure: input.creativeDisclosure,
+    taxonomy: input.taxonomy,
+    ...(aiPersona ? { aiPersona } : {}),
     status: input.status ?? "draft",
   };
 }
@@ -556,10 +608,55 @@ export function updateSeries(input: {
   series: Series;
   changes: Partial<Omit<Series, "id">>;
 }): Series {
-  const updated = { ...input.series, ...input.changes };
+  const { aiPersona: changedAiPersona, ...changesWithoutAiPersona } =
+    input.changes;
+  const aiPersona =
+    changedAiPersona === undefined
+      ? input.series.aiPersona
+      : normalizeAiPersona(changedAiPersona);
+  const updated = {
+    ...input.series,
+    ...changesWithoutAiPersona,
+    ...(aiPersona ? { aiPersona } : {}),
+  };
   validateManagedTaxonomy(updated.taxonomy);
+  validateSeriesAiPersona(updated.id, updated.creativeDisclosure, aiPersona);
 
   return updated;
+}
+
+function normalizeAiPersona(
+  input: AiPersona | undefined,
+): AiPersona | undefined {
+  if (input === undefined) {
+    return undefined;
+  }
+
+  if (input === null) {
+    throw new Error("AI Persona must be a transparent persona profile");
+  }
+
+  return createAiPersona(input);
+}
+
+function validateSeriesAiPersona(
+  seriesId: string,
+  creativeDisclosure: CreativeDisclosure,
+  aiPersona?: AiPersona,
+): void {
+  if (!aiPersona) {
+    return;
+  }
+
+  if (creativeDisclosure !== "AI-Assisted") {
+    throw new Error(
+      "AI Persona content lines must use AI-Assisted Creative Disclosure",
+    );
+  }
+
+  if (!aiPersona.managedContentLineIds.includes(seriesId)) {
+    throw new Error("AI Persona must name the Series content line it manages");
+  }
 }
 
 export const CANON_CHANGE_REQUIRES_REASON = "canon-change-requires-reason";
@@ -687,6 +784,13 @@ export function authorChapterDraft(input: {
       "draft Chapter needs a positive chapter number, a title, and prose",
     );
   }
+  const creativeDisclosure =
+    input.creativeDisclosure ?? input.series.creativeDisclosure;
+  validateSeriesAiPersona(
+    input.series.id,
+    creativeDisclosure,
+    input.series.aiPersona,
+  );
 
   return {
     id: input.id,
@@ -694,8 +798,7 @@ export function authorChapterDraft(input: {
     chapterNumber: input.chapterNumber,
     title: input.title,
     body: input.body,
-    creativeDisclosure:
-      input.creativeDisclosure ?? input.series.creativeDisclosure,
+    creativeDisclosure,
   };
 }
 
@@ -1463,6 +1566,11 @@ export function scheduleChapterPublication(input: {
   const { draft } = input;
   assertStaffMayPublish(input.actor);
   assertDraftBelongsToSeries(input.series, draft);
+  validateSeriesAiPersona(
+    input.series.id,
+    draft.creativeDisclosure,
+    input.series.aiPersona,
+  );
   assertPublishableDraft(draft);
 
   if (Number.isNaN(Date.parse(input.scheduledFor))) {
@@ -1503,6 +1611,11 @@ export function publishChapter(input: {
   const { draft } = input;
   assertStaffMayPublish(input.actor);
   assertDraftBelongsToSeries(input.series, draft);
+  validateSeriesAiPersona(
+    input.series.id,
+    draft.creativeDisclosure,
+    input.series.aiPersona,
+  );
   assertPublishableDraft(draft);
 
   const publishedAt = input.publishedAt ?? new Date().toISOString();
@@ -1510,6 +1623,7 @@ export function publishChapter(input: {
   assertPublicationIsDue(draft, input.schedule, publishedAt);
 
   return createPublishedSnapshot({
+    series: input.series,
     draft,
     actor: input.actor,
     lineage: input.lineage,
@@ -1617,10 +1731,16 @@ export function revisePublishedChapter(input: {
   }
 
   assertDraftBelongsToSeries(input.series, fixedDraft);
+  validateSeriesAiPersona(
+    input.series.id,
+    fixedDraft.creativeDisclosure,
+    input.series.aiPersona,
+  );
   assertChapterIsDistributed(fixedDraft.id, input.takedown);
   assertPublishableDraft(fixedDraft);
 
   return createPublishedSnapshot({
+    series: input.series,
     draft: fixedDraft,
     actor: input.actor,
     lineage: input.lineage,
@@ -1754,6 +1874,7 @@ function assertQualityGateCleared(
 }
 
 function createPublishedSnapshot(input: {
+  series: Series;
   draft: PublishableChapterDraft;
   actor: StaffPrincipal;
   lineage: readonly ProvenanceEntry[];
@@ -1782,6 +1903,7 @@ function createPublishedSnapshot(input: {
     body: draft.body,
     version: input.version,
     creativeDisclosure: draft.creativeDisclosure,
+    ...(input.series.aiPersona ? { aiPersona: input.series.aiPersona } : {}),
     provenanceLedgerEntryId: traced.id,
     rightsRecordIds: Object.freeze(publishingRightsGrants(draft)),
     publishedAt: input.publishedAt ?? new Date().toISOString(),
@@ -2117,12 +2239,24 @@ export function createAiPersona(input: {
   displayName: string;
   disclosure: "AI-operated creative persona";
   managedContentLineIds: string[];
+  canAuthenticate?: boolean;
   fakeHumanBiography?: string;
   fakeHumanCredentials?: string;
+  fakeHumanLivedExperience?: string;
+  fakeHumanTestimonials?: string[];
 }): AiPersona {
-  if (input.fakeHumanBiography || input.fakeHumanCredentials) {
+  if (input.canAuthenticate) {
+    throw new Error("AI Persona cannot authenticate or hold account privileges");
+  }
+
+  if (
+    input.fakeHumanBiography ||
+    input.fakeHumanCredentials ||
+    input.fakeHumanLivedExperience ||
+    (input.fakeHumanTestimonials?.length ?? 0) > 0
+  ) {
     throw new Error(
-      "AI Persona must not present fake-human biography or credentials",
+      "AI Persona must not present fake-human biography, credentials, lived experience, or testimonials",
     );
   }
 
