@@ -60,6 +60,11 @@ class ChapterDraftWorkflowTest(unittest.TestCase):
         self.assertEqual(result.evaluation.conditions["humanApproval"], "blocking-failure")
         self.assertEqual(result.provenance.workflow_run_id, result.workflow_run.id)
         self.assertEqual(result.approval_task.status, "waiting-for-human-approval")
+        self.assertEqual(result.run_record.workflow_run_id, result.workflow_run.id)
+        self.assertEqual(result.run_record.artifact, result.artifact)
+        self.assertEqual(result.run_record.evaluation, result.evaluation)
+        self.assertEqual(result.run_record.provenance, result.provenance)
+        self.assertEqual(result.run_record.approval_task, result.approval_task)
         self.assertEqual(result.public_publish_requested, False)
         self.assertEqual(result.public_publish_blocked_by, ("humanApproval",))
 
@@ -80,6 +85,27 @@ class ChapterDraftWorkflowTest(unittest.TestCase):
         self.assertEqual(result.workflow_run.id, "ai-workflow-run:test-run")
         self.assertIn("sandbox", result.artifact.body.lower())
         self.assertEqual(result.evaluation.conditions["humanApproval"], "blocking-failure")
+
+    def test_records_artifacts_evaluation_provenance_and_approval_task_for_run(self):
+        result = run_temporal_sandbox_autonomous_workflow(
+            workspace=self.workspace(),
+            series_id="thanh-kiem-trong-mua",
+            chapter_number=1,
+            prompt="Draft a chapter from the locked Story Bible.",
+            model="sandbox-model",
+            rights_record_id="rights-1",
+        )
+
+        self.assertEqual(result.run_record.workspace_id, "novelx-internal")
+        self.assertEqual(result.run_record.workflow_type, "ai-factory.sandbox-ai-autonomous-mode")
+        self.assertEqual(result.run_record.artifact, result.artifact)
+        self.assertEqual(result.run_record.evaluation, result.evaluation)
+        self.assertEqual(result.run_record.provenance, result.provenance)
+        self.assertEqual(result.run_record.approval_task, result.approval_task)
+        self.assertEqual(result.run_record.evaluation.conditions["humanApproval"], "blocking-failure")
+        self.assertEqual(result.run_record.provenance.rights_record_id, "rights-1")
+        self.assertEqual(result.run_record.public_publish_blocked_by, ("humanApproval",))
+        self.assertEqual(result.run_record.public_publish_performed, False)
 
     def test_rejects_temporal_sandbox_workflow_outside_workspace_data_access(self):
         workspace = self.workspace(data_access_scope=("series:other-series",))

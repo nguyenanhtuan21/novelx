@@ -28,7 +28,9 @@ test.describe("issue #15 — AI Persona content lines with AI-Assisted disclosur
   }) => {
     await page.goto(SERIES_PATH);
 
-    await expect(page.getByRole("heading", { name: "Thanh Kiếm Trong Mưa" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Thanh Kiếm Trong Mưa" }),
+    ).toBeVisible();
 
     const metadata = page.locator(".metadata-grid");
     await expect(metadata.getByText("Creative Disclosure")).toBeVisible();
@@ -44,7 +46,9 @@ test.describe("issue #15 — AI Persona content lines with AI-Assisted disclosur
   }) => {
     await page.goto(CHAPTER_PATH);
 
-    await expect(page.getByRole("heading", { name: "Mùi Mưa Đầu Tiên" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Mùi Mưa Đầu Tiên" }),
+    ).toBeVisible();
 
     const header = page.locator(".reader-header");
     await expect(header.getByText("Công khai AI:")).toBeVisible();

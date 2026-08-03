@@ -68,7 +68,10 @@ describe("Core Platform catalog HTTP API seam", () => {
 
       assert.equal(series.title, "Thanh Kiếm Trong Mưa");
       assert.equal(series.creativeDisclosure, "AI-Assisted");
-      assert.equal(series.aiPersona?.disclosure, "AI-operated creative persona");
+      assert.equal(
+        series.aiPersona?.disclosure,
+        "AI-operated creative persona",
+      );
       assert.deepEqual(series.taxonomy.contentWarnings, ["violence"]);
       assert.equal(series.status, "active");
       assert.equal(series.firstPublicChapterId, "chuong-1");
