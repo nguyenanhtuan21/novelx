@@ -4,6 +4,7 @@ import { afterEach, describe, it } from "node:test";
 import {
   fetchReaderLibraryRequest,
   followSeriesRequest,
+  recordEngagementRequest,
   recordProgressRequest,
   unfollowSeriesRequest,
   upgradeToReaderAccountRequest,
@@ -50,6 +51,43 @@ describe("reader calls from the browser", () => {
       chapterId: "chuong-1",
       position: 1842,
     });
+  });
+
+  it("reports engaged reading time without firing on every scroll", async () => {
+    const calls = recordFetchCalls({ status: 201, payload: {} });
+
+    await recordEngagementRequest({
+      seriesId: "thanh-kiem-trong-mua",
+      chapterId: "chuong-1",
+      engagedSeconds: 20,
+      position: 1842,
+    });
+
+    assert.deepEqual(
+      calls.map((call) => [call.method, call.url]),
+      [["POST", "/api/reader/engagement"]],
+    );
+    assert.equal(calls[0]?.headers.get("authorization"), null);
+    assert.deepEqual(JSON.parse(String(calls[0]?.body)), {
+      seriesId: "thanh-kiem-trong-mua",
+      chapterId: "chuong-1",
+      engagedSeconds: 20,
+      position: 1842,
+    });
+  });
+
+  it("does not lose an engagement chunk when the API refuses it", async () => {
+    recordFetchCalls({ status: 400, payload: { error: "invalid-engagement" } });
+
+    await assert.rejects(
+      recordEngagementRequest({
+        seriesId: "thanh-kiem-trong-mua",
+        chapterId: "chuong-1",
+        engagedSeconds: 20,
+        position: 1842,
+      }),
+      /Reader engagement request failed: 400/,
+    );
   });
 
   it("reports that the library needs a Reader Account instead of throwing", async () => {

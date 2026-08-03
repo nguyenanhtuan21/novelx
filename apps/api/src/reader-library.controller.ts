@@ -22,6 +22,13 @@ type RecordProgressBody = {
   position: number;
 };
 
+type RecordEngagementBody = {
+  seriesId: string;
+  chapterId: string;
+  engagedSeconds: number;
+  position: number;
+};
+
 @Controller("reader")
 export class ReaderLibraryController {
   constructor(
@@ -67,6 +74,20 @@ export class ReaderLibraryController {
       principal: this.principal(authorization),
       seriesId: body?.seriesId,
       chapterId: body?.chapterId,
+      position: body?.position,
+    });
+  }
+
+  @Post("engagement")
+  recordEngagement(
+    @Body() body: RecordEngagementBody,
+    @Headers("authorization") authorization?: string,
+  ) {
+    return this.readerLibraryService.recordEngagement({
+      principal: this.principal(authorization),
+      seriesId: body?.seriesId,
+      chapterId: body?.chapterId,
+      engagedSeconds: body?.engagedSeconds,
       position: body?.position,
     });
   }
