@@ -19,3 +19,4 @@ Domain docs use a single-context layout: root `CONTEXT.md` plus root `docs/adr/`
 - Done: All test case green , when task has UI, alway use playwright MCP to test feature
 - Hard follow Clean Architecture , SOLID , YAGNI, KISS
 - Don't over engineering !
+- In local environment , use docker for external system, such as temporal , ....
