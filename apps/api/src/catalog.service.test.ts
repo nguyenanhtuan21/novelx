@@ -8,12 +8,15 @@ import { CatalogService } from "./catalog.service.js";
 import { seededCatalogRepository } from "./seeded-catalog.fixture.js";
 
 describe("Core Platform catalog API seam", () => {
-  it("exposes curated Series metadata with Creative Disclosure and Managed Taxonomy", async () => {
+  it("exposes curated Series metadata with Creative Disclosure, AI Persona, and Managed Taxonomy", async () => {
     const service = new CatalogService(await seededCatalogRepository());
 
     const [series] = await service.listSeries();
 
-    assert.equal(series?.creativeDisclosure, "Hybrid");
+    assert.equal(series?.creativeDisclosure, "AI-Assisted");
+    assert.equal(series?.aiPersona?.displayName, "May Ke Chuyen Mua Kiem");
+    assert.equal("canAuthenticate" in (series?.aiPersona ?? {}), false);
+    assert.equal("managedContentLineIds" in (series?.aiPersona ?? {}), false);
     assert.equal(series?.firstPublicChapterId, "chuong-1");
     assert.equal(series?.taxonomy.genre, "fantasy");
     assert.equal(series?.taxonomy.ageRating, "13+");
@@ -71,7 +74,11 @@ describe("Core Platform catalog API seam", () => {
 
     assert.equal(chapter.version, 1);
     assert.equal(chapter.title, "Mùi Mưa Đầu Tiên");
+    assert.equal(chapter.creativeDisclosure, "AI-Assisted");
+    assert.equal(chapter.aiPersona?.disclosure, "AI-operated creative persona");
+    assert.equal("canAuthenticate" in (chapter.aiPersona ?? {}), false);
     assert.deepEqual(Object.keys(chapter).sort(), [
+      "aiPersona",
       "body",
       "chapterId",
       "chapterNumber",

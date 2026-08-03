@@ -1,3 +1,4 @@
+import { publicCatalogSeries } from "@novelx/shared";
 import type { PublicCatalogSeries, PublishedSnapshot } from "@novelx/shared";
 
 import type { CatalogRepository } from "./catalog.repository.js";
@@ -29,7 +30,12 @@ export class PublishedCatalogRepository implements CatalogRepository {
         );
 
         return first
-          ? [{ ...series, firstPublicChapterId: first.chapterId }]
+          ? [
+              publicCatalogSeries({
+                ...series,
+                firstPublicChapterId: first.chapterId,
+              }),
+            ]
           : [];
       }),
     );

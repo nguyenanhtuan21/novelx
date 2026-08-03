@@ -25,7 +25,14 @@ describe("public Series page web/API seam", () => {
           title: "Thanh Kiếm Trong Mưa",
           synopsis: "Series kiếm hiệp từ Core Platform API.",
           status: "active",
-          creativeDisclosure: "Hybrid",
+          creativeDisclosure: "AI-Assisted",
+          aiPersona: {
+            id: "persona-mua-kiem",
+            displayName: "May Ke Chuyen Mua Kiem",
+            disclosure: "AI-operated creative persona",
+            managedContentLineIds: ["thanh-kiem-trong-mua"],
+            canAuthenticate: false,
+          },
           taxonomy: {
             genre: "fantasy",
             subgenre: "kiem-hiep",
@@ -56,7 +63,10 @@ describe("public Series page web/API seam", () => {
     assert.match(html, /Thanh Kiếm Trong Mưa/);
     assert.match(html, /Series kiếm hiệp từ Core Platform API\./);
     assert.match(html, /Creative Disclosure/);
-    assert.match(html, /Hybrid/);
+    assert.match(html, /AI-Assisted/);
+    assert.match(html, /AI Persona/);
+    assert.match(html, /May Ke Chuyen Mua Kiem/);
+    assert.match(html, /AI-operated creative persona/);
     assert.match(html, /Trạng thái/);
     assert.match(html, /active/);
     assert.match(html, /Cảnh báo nội dung/);

@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   assertStaffMayPublish,
+  authorChapterDraft,
   createAnonymousReaderSession,
   createAiPersona,
   createChapterDraft,
@@ -12,10 +13,13 @@ import {
   createStaffPrincipal,
   grantEntitlement,
   publishChapter,
+  publicChapter,
   recordAnonymousProgress,
+  updateSeries,
   upgradeAnonymousProgress,
   type ChapterDraft,
   type CreativeDisclosure,
+  type ManagedTaxonomy,
   type ReportedQualityCheck,
 } from "./index.js";
 import {
@@ -63,6 +67,87 @@ describe("publish/read workflow", () => {
     assert.equal(snapshot.version, 1);
     assert.equal(snapshot.body, draft.body);
     assert.deepEqual(snapshot.creativeDisclosure, "Hybrid");
+  });
+
+  it("snapshots the AI Persona readers saw with an AI-Assisted Chapter", () => {
+    const persona = createAiPersona({
+      id: "persona-1",
+      displayName: "May Ke Chuyen NovelX",
+      disclosure: "AI-operated creative persona",
+      managedContentLineIds: ["series-1"],
+    });
+    const series = createSeries({
+      id: "series-1",
+      title: "Thanh Kiếm Trong Mưa",
+      synopsis: "A curated Vietnamese serialized story.",
+      creativeDisclosure: "AI-Assisted",
+      aiPersona: persona,
+      taxonomy: validTaxonomy(),
+    });
+    const draft = createApprovedDraft({
+      id: "chapter-1",
+      seriesId: series.id,
+      body: "Chapter body long enough for a reader-facing snapshot.",
+      creativeDisclosure: "AI-Assisted",
+    });
+
+    const snapshot = publishChapter({
+      series,
+      draft,
+      actor: createStaffPrincipal({
+        staffAccountId: "staff-editor-1",
+        permissions: ["chapter:publish"],
+      }),
+      publishedChapterNumbers: [],
+      lineage: chapterDraftLineage(draft),
+    });
+
+    assert.equal(snapshot.aiPersona?.displayName, "May Ke Chuyen NovelX");
+    assert.equal(
+      "canAuthenticate" in (publicChapter(snapshot).aiPersona ?? {}),
+      false,
+    );
+    assert.equal(
+      "managedContentLineIds" in (publicChapter(snapshot).aiPersona ?? {}),
+      false,
+    );
+  });
+
+  it("refuses to publish a stale non-AI-Assisted draft after a Series gets an AI Persona", () => {
+    const draft = createApprovedDraft({
+      id: "chapter-1",
+      seriesId: "series-1",
+      body: "Chapter body long enough for a reader-facing snapshot.",
+      creativeDisclosure: "Human",
+    });
+    const series = createSeries({
+      id: "series-1",
+      title: "Thanh Kiếm Trong Mưa",
+      synopsis: "A curated Vietnamese serialized story.",
+      creativeDisclosure: "AI-Assisted",
+      aiPersona: createAiPersona({
+        id: "persona-1",
+        displayName: "May Ke Chuyen NovelX",
+        disclosure: "AI-operated creative persona",
+        managedContentLineIds: ["series-1"],
+      }),
+      taxonomy: validTaxonomy(),
+    });
+
+    assert.throws(
+      () =>
+        publishChapter({
+          series,
+          draft,
+          actor: createStaffPrincipal({
+            staffAccountId: "staff-editor-1",
+            permissions: ["chapter:publish"],
+          }),
+          publishedChapterNumbers: [],
+          lineage: chapterDraftLineage(draft),
+        }),
+      /AI Persona content lines must use AI-Assisted/,
+    );
   });
 
   it("blocks public publishing when any blocking quality gate condition fails", () => {
@@ -157,10 +242,21 @@ describe("AI Persona boundary", () => {
       id: "persona-1",
       displayName: "May Ke Chuyen NovelX",
       disclosure: "AI-operated creative persona",
-      managedContentLineIds: ["series-1"],
+      managedContentLineIds: ["series-1", "series-ai-persona"],
     });
 
     assert.equal(persona.canAuthenticate, false);
+    assert.throws(
+      () =>
+        createAiPersona({
+          id: "persona-login",
+          displayName: "May Dang Nhap",
+          disclosure: "AI-operated creative persona",
+          managedContentLineIds: [],
+          canAuthenticate: true,
+        }),
+      /AI Persona cannot authenticate/,
+    );
     assert.throws(
       () =>
         createAiPersona({
@@ -171,6 +267,99 @@ describe("AI Persona boundary", () => {
           fakeHumanBiography: "Born in Hue and writing from lived experience.",
         }),
       /AI Persona must not present fake-human biography/,
+    );
+    assert.throws(
+      () =>
+        createAiPersona({
+          id: "persona-3",
+          displayName: "Tac gia trai nghiem ao",
+          disclosure: "AI-operated creative persona",
+          managedContentLineIds: [],
+          fakeHumanLivedExperience: "I survived the war I write about.",
+        }),
+      /AI Persona must not present fake-human/,
+    );
+    assert.throws(
+      () =>
+        createAiPersona({
+          id: "persona-4",
+          displayName: "Nguoi duoc chung thuc ao",
+          disclosure: "AI-operated creative persona",
+          managedContentLineIds: [],
+          fakeHumanTestimonials: ["Readers say I changed their lives."],
+        }),
+      /AI Persona must not present fake-human/,
+    );
+  });
+
+  it("keeps AI Persona content lines tied to AI-Assisted disclosure", () => {
+    const persona = createAiPersona({
+      id: "persona-1",
+      displayName: "May Ke Chuyen NovelX",
+      disclosure: "AI-operated creative persona",
+      managedContentLineIds: ["series-1"],
+    });
+
+    assert.throws(
+      () =>
+        createSeries({
+          id: "series-human-persona",
+          title: "Series Human",
+          synopsis: "A contradictory public content line.",
+          creativeDisclosure: "Human",
+          aiPersona: persona,
+          taxonomy: validTaxonomy(),
+        }),
+      /AI Persona content lines must use AI-Assisted/,
+    );
+
+    assert.throws(
+      () =>
+        createSeries({
+          id: "series-mismatched-persona",
+          title: "Series Mismatched Persona",
+          synopsis: "A persona claiming a different content line.",
+          creativeDisclosure: "AI-Assisted",
+          aiPersona: createAiPersona({
+            id: "persona-other-series",
+            displayName: "May Khac",
+            disclosure: "AI-operated creative persona",
+            managedContentLineIds: ["other-series"],
+          }),
+          taxonomy: validTaxonomy(),
+        }),
+      /AI Persona must name the Series content line/,
+    );
+
+    const series = createSeries({
+      id: "series-1",
+      title: "Series AI Persona",
+      synopsis: "A transparent public content line.",
+      creativeDisclosure: "AI-Assisted",
+      aiPersona: persona,
+      taxonomy: validTaxonomy(),
+    });
+
+    assert.throws(
+      () =>
+        updateSeries({
+          series,
+          changes: { creativeDisclosure: "Hybrid" },
+        }),
+      /AI Persona content lines must use AI-Assisted/,
+    );
+
+    assert.throws(
+      () =>
+        authorChapterDraft({
+          id: "chapter-human-override",
+          series,
+          chapterNumber: 1,
+          title: "Wrong disclosure",
+          body: "This chapter would hide the Series AI Persona disclosure.",
+          creativeDisclosure: "Human",
+        }),
+      /AI Persona content lines must use AI-Assisted/,
     );
   });
 });
@@ -282,6 +471,19 @@ function plainDraft(input: DraftFixture): ChapterDraft {
       reviewerStaffAccountId: "staff-editor-1",
       approvedAt: "2026-07-31T00:00:00.000Z",
     },
+  };
+}
+
+function validTaxonomy(): ManagedTaxonomy {
+  return {
+    genre: "fantasy",
+    subgenre: "kiem-hiep",
+    tropes: [],
+    moods: [],
+    themes: [],
+    audience: "young-adult",
+    ageRating: "13+",
+    contentWarnings: [],
   };
 }
 

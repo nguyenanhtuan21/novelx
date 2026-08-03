@@ -37,6 +37,14 @@ export default async function SeriesPage({ params }: SeriesPageProps) {
             <dt>Creative Disclosure</dt>
             <dd>{series.creativeDisclosure}</dd>
           </div>
+          {series.aiPersona ? (
+            <div>
+              <dt>AI Persona</dt>
+              <dd>
+                {series.aiPersona.displayName} - {series.aiPersona.disclosure}
+              </dd>
+            </div>
+          ) : null}
           <div>
             <dt>Trạng thái phát hành</dt>
             <dd>{series.status}</dd>

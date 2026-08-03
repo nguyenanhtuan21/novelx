@@ -41,7 +41,10 @@ describe("Core Platform catalog HTTP API seam", () => {
 
       assert.equal(series?.title, "Thanh Kiếm Trong Mưa");
       assert.equal(series?.status, "active");
-      assert.equal(series?.creativeDisclosure, "Hybrid");
+      assert.equal(series?.creativeDisclosure, "AI-Assisted");
+      assert.equal(series?.aiPersona?.displayName, "May Ke Chuyen Mua Kiem");
+      assert.equal("canAuthenticate" in (series?.aiPersona ?? {}), false);
+      assert.equal("managedContentLineIds" in (series?.aiPersona ?? {}), false);
       assert.equal(series?.taxonomy.genre, "fantasy");
       assert.equal(series?.firstPublicChapterId, "chuong-1");
     } finally {
@@ -64,7 +67,8 @@ describe("Core Platform catalog HTTP API seam", () => {
       const series = JSON.parse(body) as PublicCatalogSeries;
 
       assert.equal(series.title, "Thanh Kiếm Trong Mưa");
-      assert.equal(series.creativeDisclosure, "Hybrid");
+      assert.equal(series.creativeDisclosure, "AI-Assisted");
+      assert.equal(series.aiPersona?.disclosure, "AI-operated creative persona");
       assert.deepEqual(series.taxonomy.contentWarnings, ["violence"]);
       assert.equal(series.status, "active");
       assert.equal(series.firstPublicChapterId, "chuong-1");
@@ -90,6 +94,8 @@ describe("Core Platform catalog HTTP API seam", () => {
       assert.equal(chapter.chapterId, "chuong-1");
       assert.equal(chapter.version, 1);
       assert.equal(chapter.title, "Mùi Mưa Đầu Tiên");
+      assert.equal(chapter.creativeDisclosure, "AI-Assisted");
+      assert.equal(chapter.aiPersona?.displayName, "May Ke Chuyen Mua Kiem");
       // How the Chapter was cleared, traced, and published stays internal:
       // this route asks for no session at all.
       for (const internal of [

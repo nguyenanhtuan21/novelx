@@ -1,5 +1,6 @@
 import { Pool } from "pg";
 import type {
+  AiPersona,
   ChapterPublicationSchedule,
   ChapterTakedown,
   CreativeDisclosure,
@@ -17,6 +18,7 @@ type PublishedSnapshotRow = {
   body: string;
   version: number;
   creative_disclosure: CreativeDisclosure;
+  ai_persona: AiPersona | null;
   provenance_ledger_entry_id: string;
   rights_record_ids: string[];
   published_at: Date;
@@ -44,7 +46,7 @@ type TakedownRow = {
 };
 
 const SNAPSHOT_COLUMNS = `id, chapter_id, series_id, chapter_number, title, body,
-                          version, creative_disclosure,
+                          version, creative_disclosure, ai_persona,
                           provenance_ledger_entry_id, rights_record_ids,
                           published_at, published_by_staff_account_id,
                           supersedes_snapshot_id, revision_reason`;
@@ -79,7 +81,7 @@ export class PostgresPublishingRepository implements PublishingRepository {
   ): Promise<"published" | "already-published"> {
     const written = await this.pool.query(
       `insert into published_snapshots (${SNAPSHOT_COLUMNS})
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
        on conflict (chapter_id, version) do nothing`,
       [
         snapshot.id,
@@ -90,6 +92,7 @@ export class PostgresPublishingRepository implements PublishingRepository {
         snapshot.body,
         snapshot.version,
         snapshot.creativeDisclosure,
+        snapshot.aiPersona ? JSON.stringify(snapshot.aiPersona) : null,
         snapshot.provenanceLedgerEntryId,
         JSON.stringify(snapshot.rightsRecordIds),
         snapshot.publishedAt,
@@ -294,6 +297,7 @@ function toPublishedSnapshot(row: PublishedSnapshotRow): PublishedSnapshot {
     body: row.body,
     version: row.version,
     creativeDisclosure: row.creative_disclosure,
+    ...(row.ai_persona ? { aiPersona: row.ai_persona } : {}),
     provenanceLedgerEntryId: row.provenance_ledger_entry_id,
     rightsRecordIds: Object.freeze(row.rights_record_ids),
     publishedAt: row.published_at.toISOString(),
