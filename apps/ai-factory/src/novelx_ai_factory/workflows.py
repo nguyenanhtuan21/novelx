@@ -120,6 +120,7 @@ class TemporalSandboxWorkflowRequest:
     prompt: str
     model: str
     rights_record_id: str
+    public_publish_requested: bool = False
 
 
 @dataclass(frozen=True)
@@ -203,6 +204,7 @@ def run_temporal_sandbox_autonomous_workflow(
     prompt: str,
     model: str,
     rights_record_id: str,
+    public_publish_requested: bool = False,
 ) -> TemporalSandboxWorkflowResult:
     execution = _trusted_temporal_execution(workspace)
     return _run_temporal_sandbox_request(
@@ -213,6 +215,7 @@ def run_temporal_sandbox_autonomous_workflow(
             prompt=prompt,
             model=model,
             rights_record_id=rights_record_id,
+            public_publish_requested=public_publish_requested,
         ),
         execution,
     )
@@ -276,7 +279,7 @@ def _run_temporal_sandbox_request(
         evaluation=base_result.evaluation,
         provenance=provenance,
         approval_task=base_result.approval_task,
-        public_publish_requested=False,
+        public_publish_requested=request.public_publish_requested,
         public_publish_blocked_by=("humanApproval",),
     )
 

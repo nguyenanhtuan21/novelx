@@ -112,6 +112,22 @@ class ChapterDraftWorkflowTest(unittest.TestCase):
         self.assertEqual(result.provenance.rights_record_id, "rights-1")
         self.assertTrue(result.provenance.workflow_run_id.startswith("ai-workflow-run:"))
 
+    def test_blocks_requested_public_publish_until_human_approval_exists(self):
+        result = run_temporal_sandbox_autonomous_workflow(
+            workspace=self.workspace(),
+            series_id="thanh-kiem-trong-mua",
+            chapter_number=1,
+            prompt="Draft a chapter from the locked Story Bible.",
+            model="sandbox-model",
+            rights_record_id="rights-1",
+            public_publish_requested=True,
+        )
+
+        self.assertEqual(result.public_publish_requested, True)
+        self.assertEqual(result.public_publish_blocked_by, ("humanApproval",))
+        self.assertEqual(result.approval_task.status, "waiting-for-human-approval")
+        self.assertEqual(result.evaluation.conditions["humanApproval"], "blocking-failure")
+
     def test_rejects_workflow_inputs_without_rights_record(self):
         with self.assertRaisesRegex(ValueError, "Rights Record is required"):
             run_chapter_draft_workflow(
